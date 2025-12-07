@@ -459,6 +459,42 @@ async function loadFilters() {
             await loadScript('src/scanner/PatternExtractor.js');
         }
 
+        // 🔥 加载 Vue 检测模块
+        try {
+            if (typeof window.VueDetector === 'undefined') {
+                await loadScript('src/scanner/vue/utils/serializer.js');
+                await loadScript('src/scanner/vue/utils/pathUtils.js');
+                await loadScript('src/scanner/vue/VueFinder.js');
+                await loadScript('src/scanner/vue/RouterAnalyzer.js');
+                await loadScript('src/scanner/vue/GuardPatcher.js');
+                await loadScript('src/scanner/vue/VueDetector.js');
+                await loadScript('src/scanner/vue/VueDetectorBridge.js');
+                await loadScript('src/scanner/vue/index.js');
+                console.log('✅ [Vue] Vue 检测模块加载成功');
+            }
+        } catch (vueErr) {
+            console.warn('⚠️ [Vue] Vue 检测模块加载失败:', vueErr);
+        }
+
+        // 🔥 加载 Webpack 扫描模块
+        try {
+            if (typeof window.WebpackScannerBridge === 'undefined') {
+                await loadScript('src/scanner/webpack/utils/patternUtils.js');
+                await loadScript('src/scanner/webpack/utils/urlUtils.js');
+                await loadScript('src/scanner/webpack/WebpackDetector.js');
+                await loadScript('src/scanner/webpack/ChunkAnalyzer.js');
+                await loadScript('src/scanner/webpack/SourceMapParser.js');
+                await loadScript('src/scanner/webpack/RuntimeAnalyzer.js');
+                await loadScript('src/scanner/webpack/ModuleAnalyzer.js');
+                await loadScript('src/scanner/webpack/WebpackScannerBridge.js');
+                await loadScript('src/scanner/webpack/WebpackResultRenderer.js');
+                await loadScript('src/scanner/webpack/index.js');
+                console.log('✅ [Webpack] Webpack 扫描模块加载成功');
+            }
+        } catch (webpackErr) {
+            console.warn('⚠️ [Webpack] Webpack 扫描模块加载失败:', webpackErr);
+        }
+
         // 等待脚本解析
         await new Promise(r => setTimeout(r, 100));
 
@@ -491,10 +527,377 @@ async function loadFilters() {
     }
 }
 
+// -------------------- Source Map 文件提取 --------------------
+/**
+ * 🔥 从 Source Map 文件中提取敏感信息
+ * @param {string} content - Source Map 文件内容
+ * @param {string} sourceUrl - Source Map 文件 URL
+ * @returns {Object} 提取结果
+ */
+async function extractFromSourceMap(content, sourceUrl) {
+    console.log('🗺️ [SourceMap] 开始解析 Source Map:', sourceUrl.substring(0, 80));
+    
+    let results = {
+        absoluteApis: [],
+        relativeApis: [],
+        domains: [],
+        urls: [],
+        jsFiles: [],
+        vueFiles: [],
+        emails: [],
+        sensitiveKeywords: [],
+        credentials: [],
+        paths: [],
+        sourceMapSources: [] // 🔥 新增：Source Map 中的源文件列表
+    };
+    
+    try {
+        // 解析 Source Map JSON
+        let sourceMap;
+        try {
+            sourceMap = JSON.parse(content);
+        } catch (e) {
+            console.warn('⚠️ [SourceMap] JSON 解析失败，尝试作为普通文本处理');
+            // 如果不是有效的 JSON，使用正则提取
+            return await patternExtractor.extractPatterns(content, sourceUrl);
+        }
+        
+        // 验证 Source Map 格式
+        if (!sourceMap || sourceMap.version !== 3) {
+            console.warn('⚠️ [SourceMap] 不是有效的 Source Map v3 格式');
+            return results;
+        }
+        
+        console.log(`📊 [SourceMap] 发现 ${sourceMap.sources?.length || 0} 个源文件`);
+        
+        // 🔥 提取源文件路径列表
+        if (sourceMap.sources && Array.isArray(sourceMap.sources)) {
+            for (const sourcePath of sourceMap.sources) {
+                if (sourcePath) {
+                    results.sourceMapSources.push({
+                        value: sourcePath,
+                        sourceUrl: sourceUrl,
+                        extractedAt: new Date().toISOString()
+                    });
+                    
+                    // 检测 Vue 文件
+                    if (sourcePath.endsWith('.vue')) {
+                        results.vueFiles.push({
+                            value: sourcePath,
+                            sourceUrl: sourceUrl,
+                            type: 'sourcemap-source',
+                            extractedAt: new Date().toISOString()
+                        });
+                    }
+                }
+            }
+        }
+        
+        // 🔥 扫描 sourcesContent 中的原始源代码
+        if (sourceMap.sourcesContent && Array.isArray(sourceMap.sourcesContent)) {
+            console.log(`🔍 [SourceMap] 开始扫描 ${sourceMap.sourcesContent.length} 个源文件内容`);
+            
+            for (let i = 0; i < sourceMap.sourcesContent.length; i++) {
+                const sourceContent = sourceMap.sourcesContent[i];
+                const sourcePath = sourceMap.sources?.[i] || `source_${i}`;
+                
+                if (!sourceContent || typeof sourceContent !== 'string') {
+                    continue;
+                }
+                
+                // 跳过过小的内容
+                if (sourceContent.length < 50) {
+                    continue;
+                }
+                
+                try {
+                    // 🔥 对每个源文件内容进行提取
+                    let sourceResults;
+                    
+                    // 判断源文件类型
+                    if (sourcePath.endsWith('.vue')) {
+                        // Vue 文件使用专门的提取器
+                        sourceResults = await extractFromVueFile(sourceContent, sourcePath);
+                    } else {
+                        // 其他文件使用正则提取
+                        sourceResults = await patternExtractor.extractPatterns(sourceContent, sourcePath);
+                        
+                        // 对 JS/TS 文件尝试 AST 提取
+                        const isJsLike = sourcePath.endsWith('.js') || 
+                                         sourcePath.endsWith('.ts') || 
+                                         sourcePath.endsWith('.jsx') || 
+                                         sourcePath.endsWith('.tsx');
+                        
+                        if (isJsLike && window.astBridge && window.astBridge.isAvailable()) {
+                            try {
+                                const astResult = window.astBridge.extract(sourceContent, sourcePath);
+                                if (astResult.success && astResult.detections?.length > 0) {
+                                    sourceResults = mergeASTResults(sourceResults, astResult.detections, sourcePath);
+                                }
+                            } catch (astError) {
+                                // AST 提取失败，继续使用正则结果
+                            }
+                        }
+                    }
+                    
+                    // 合并结果
+                    if (sourceResults) {
+                        mergeExtractedResults(results, sourceResults);
+                    }
+                    
+                } catch (extractError) {
+                    console.warn(`⚠️ [SourceMap] 提取源文件 ${sourcePath} 失败:`, extractError.message);
+                }
+            }
+        }
+        
+        console.log(`✅ [SourceMap] 解析完成，提取到 ${countResults(results)} 个数据项`);
+        
+    } catch (error) {
+        console.error('❌ [SourceMap] 解析失败:', error);
+    }
+    
+    return results;
+}
+
+// -------------------- Vue 单文件组件提取 --------------------
+/**
+ * 🔥 从 Vue 单文件组件中提取敏感信息
+ * @param {string} content - Vue 文件内容
+ * @param {string} sourceUrl - Vue 文件 URL
+ * @returns {Object} 提取结果
+ */
+async function extractFromVueFile(content, sourceUrl) {
+    console.log('🟢 [Vue] 开始解析 Vue 文件:', sourceUrl.substring(0, 80));
+    
+    let results = {
+        absoluteApis: [],
+        relativeApis: [],
+        domains: [],
+        urls: [],
+        jsFiles: [],
+        vueFiles: [],
+        vueRoutes: [],
+        emails: [],
+        sensitiveKeywords: [],
+        credentials: [],
+        paths: [],
+        comments: []
+    };
+    
+    try {
+        // 🔥 提取 <script> 部分
+        const scriptMatch = content.match(/<script[^>]*>([\s\S]*?)<\/script>/gi);
+        if (scriptMatch) {
+            for (const scriptBlock of scriptMatch) {
+                // 移除 <script> 标签
+                const scriptContent = scriptBlock
+                    .replace(/<script[^>]*>/i, '')
+                    .replace(/<\/script>/i, '');
+                
+                if (scriptContent.trim().length > 10) {
+                    // 使用正则提取
+                    const scriptResults = await patternExtractor.extractPatterns(scriptContent, sourceUrl);
+                    mergeExtractedResults(results, scriptResults);
+                    
+                    // 尝试 AST 提取
+                    if (window.astBridge && window.astBridge.isAvailable()) {
+                        try {
+                            const astResult = window.astBridge.extract(scriptContent, sourceUrl);
+                            if (astResult.success && astResult.detections?.length > 0) {
+                                results = mergeASTResults(results, astResult.detections, sourceUrl);
+                            }
+                        } catch (astError) {
+                            // AST 提取失败，继续
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 🔥 提取 <template> 部分中的 URL 和路径
+        const templateMatch = content.match(/<template[^>]*>([\s\S]*?)<\/template>/gi);
+        if (templateMatch) {
+            for (const templateBlock of templateMatch) {
+                const templateContent = templateBlock
+                    .replace(/<template[^>]*>/i, '')
+                    .replace(/<\/template>/i, '');
+                
+                // 提取 href、src、:src、:href 等属性中的 URL
+                const urlPatterns = [
+                    /(?:href|src|:href|:src|v-bind:href|v-bind:src)=["']([^"']+)["']/gi,
+                    /(?:to|:to|v-bind:to)=["']([^"']+)["']/gi,
+                    /(?:url|:url)=["']([^"']+)["']/gi,
+                    /@click=["'][^"']*(?:push|replace)\s*\(\s*['"]([^'"]+)['"]/gi
+                ];
+                
+                for (const pattern of urlPatterns) {
+                    let match;
+                    while ((match = pattern.exec(templateContent)) !== null) {
+                        const url = match[1];
+                        if (url && !url.startsWith('{{') && !url.startsWith('#')) {
+                            if (url.startsWith('http://') || url.startsWith('https://')) {
+                                results.urls.push({
+                                    value: url,
+                                    sourceUrl: sourceUrl,
+                                    type: 'vue-template',
+                                    extractedAt: new Date().toISOString()
+                                });
+                            } else if (url.startsWith('/')) {
+                                // 可能是路由路径
+                                results.vueRoutes.push({
+                                    value: url,
+                                    path: url,
+                                    sourceUrl: sourceUrl,
+                                    source: 'vue-template',
+                                    extractedAt: new Date().toISOString()
+                                });
+                            }
+                        }
+                    }
+                }
+                
+                // 提取 API 调用
+                const apiPatterns = [
+                    /(?:\$http|\$axios|axios|fetch)\s*\.\s*(?:get|post|put|delete|patch)\s*\(\s*['"`]([^'"`]+)['"`]/gi,
+                    /(?:api|API)\.([a-zA-Z_][a-zA-Z0-9_]*)/gi
+                ];
+                
+                for (const pattern of apiPatterns) {
+                    let match;
+                    while ((match = pattern.exec(templateContent)) !== null) {
+                        const api = match[1];
+                        if (api) {
+                            if (api.startsWith('/')) {
+                                results.relativeApis.push({
+                                    value: api,
+                                    sourceUrl: sourceUrl,
+                                    type: 'vue-template',
+                                    extractedAt: new Date().toISOString()
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 🔥 提取 <style> 部分中的 URL（如背景图片等）
+        const styleMatch = content.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+        if (styleMatch) {
+            for (const styleBlock of styleMatch) {
+                const styleContent = styleBlock
+                    .replace(/<style[^>]*>/i, '')
+                    .replace(/<\/style>/i, '');
+                
+                // 提取 url() 中的路径
+                const urlPattern = /url\s*\(\s*['"]?([^'")]+)['"]?\s*\)/gi;
+                let match;
+                while ((match = urlPattern.exec(styleContent)) !== null) {
+                    const url = match[1];
+                    if (url && !url.startsWith('data:')) {
+                        results.urls.push({
+                            value: url,
+                            sourceUrl: sourceUrl,
+                            type: 'vue-style',
+                            extractedAt: new Date().toISOString()
+                        });
+                    }
+                }
+            }
+        }
+        
+        // 🔥 提取注释中的信息
+        const commentPatterns = [
+            /<!--([\s\S]*?)-->/g,  // HTML 注释
+            /\/\*[\s\S]*?\*\//g,   // CSS/JS 块注释
+            /\/\/[^\n]*/g          // JS 行注释
+        ];
+        
+        for (const pattern of commentPatterns) {
+            let match;
+            while ((match = pattern.exec(content)) !== null) {
+                const comment = match[0];
+                // 检查是否包含敏感信息
+                if (comment.length > 10 && comment.length < 500) {
+                    const sensitivePatterns = [
+                        /TODO|FIXME|HACK|XXX|BUG/i,
+                        /password|secret|key|token|api/i,
+                        /http[s]?:\/\//i
+                    ];
+                    
+                    if (sensitivePatterns.some(p => p.test(comment))) {
+                        results.comments.push({
+                            value: comment.substring(0, 200),
+                            sourceUrl: sourceUrl,
+                            type: 'vue-comment',
+                            extractedAt: new Date().toISOString()
+                        });
+                    }
+                }
+            }
+        }
+        
+        console.log(`✅ [Vue] 解析完成，提取到 ${countResults(results)} 个数据项`);
+        
+    } catch (error) {
+        console.error('❌ [Vue] 解析失败:', error);
+        // 降级为普通正则提取
+        try {
+            results = await patternExtractor.extractPatterns(content, sourceUrl);
+        } catch (e) {
+            // 忽略
+        }
+    }
+    
+    return results;
+}
+
+// -------------------- 辅助函数 --------------------
+/**
+ * 合并提取结果
+ * @param {Object} target - 目标结果对象
+ * @param {Object} source - 源结果对象
+ */
+function mergeExtractedResults(target, source) {
+    if (!source) return;
+    
+    for (const key of Object.keys(source)) {
+        if (Array.isArray(source[key]) && source[key].length > 0) {
+            if (!target[key]) {
+                target[key] = [];
+            }
+            
+            // 去重合并
+            const existingValues = new Set(target[key].map(item => 
+                typeof item === 'object' ? item.value : item
+            ));
+            
+            for (const item of source[key]) {
+                const value = typeof item === 'object' ? item.value : item;
+                if (!existingValues.has(value)) {
+                    target[key].push(item);
+                    existingValues.add(value);
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 统计结果数量
+ * @param {Object} results - 结果对象
+ * @returns {number} 总数量
+ */
+function countResults(results) {
+    if (!results) return 0;
+    return Object.values(results).reduce((sum, arr) => 
+        sum + (Array.isArray(arr) ? arr.length : 0), 0
+    );
+}
+
 // -------------------- 统一内容提取 --------------------
 async function extractFromContent(content, sourceUrl = 'unknown') {
-    //console.log('🔍 [DEBUG] 开始统一内容提取...');
-
     if (!patternExtractor || typeof patternExtractor.extractPatterns !== 'function') {
         throw new Error('PatternExtractor.extractPatterns 不可用');
     }
@@ -503,14 +906,319 @@ async function extractFromContent(content, sourceUrl = 'unknown') {
     if (typeof patternExtractor.ensureCustomPatternsLoaded === 'function') {
         await patternExtractor.ensureCustomPatternsLoaded();
     }
+    
+    // 🔥 检测特殊文件类型
+    const specialFileType = getSpecialFileType(sourceUrl);
+    
+    // 🔥 处理 Source Map 文件
+    if (specialFileType === 'sourcemap') {
+        return await extractFromSourceMap(content, sourceUrl);
+    }
+    
+    // 🔥 处理 Vue 单文件组件
+    if (specialFileType === 'vue') {
+        return await extractFromVueFile(content, sourceUrl);
+    }
+    
+    // 使用正则提取
+    let results = await patternExtractor.extractPatterns(content, sourceUrl);
 
-    // 使用统一入口提取
-    const results = await patternExtractor.extractPatterns(content, sourceUrl);
+    // 检查是否为 JavaScript 文件，尝试使用 AST 提取
+    const isJsFile = sourceUrl.endsWith('.js') || 
+                     sourceUrl.includes('.js?') ||
+                     specialFileType === 'typescript' ||
+                     (content && (content.trim().startsWith('(function') || 
+                                  content.trim().startsWith('function') ||
+                                  content.includes('const ') ||
+                                  content.includes('let ') ||
+                                  content.includes('var ')));
+    
+    // AST 提取
+    const astAvailable = window.astBridge && window.astBridge.isAvailable();
+    
+    if (isJsFile) {
+        if (astAvailable) {
+            try {
+                console.log('🔍 [AST] 尝试 AST 提取:', sourceUrl.substring(0, 80));
+                const astResult = window.astBridge.extract(content, sourceUrl);
+                
+                if (astResult.success && astResult.detections && astResult.detections.length > 0) {
+                    // 合并 AST 提取结果
+                    results = mergeASTResults(results, astResult.detections, sourceUrl);
+                    console.log('✅ [AST] 提取成功，检测到', astResult.detections.length, '个敏感信息');
+                } else if (astResult.errors && astResult.errors.length > 0) {
+                    console.warn('⚠️ [AST] 提取有错误:', astResult.errors[0]?.message || astResult.errors[0]);
+                }
+            } catch (error) {
+                console.warn('❌ [AST] 提取异常:', error.message);
+            }
+        } else {
+            // 仅在首次遇到 JS 文件时输出警告
+            if (!window._astWarningShown) {
+                console.warn('⚠️ [AST] AST 系统不可用，仅使用正则提取');
+                console.warn('  - window.astBridge:', !!window.astBridge);
+                console.warn('  - isAvailable:', window.astBridge?.isAvailable?.());
+                window._astWarningShown = true;
+            }
+        }
+    }
 
-    // 🔥 修复：使用 IndexedDB 数据进行智能相对路径解析
+    // 使用 IndexedDB 数据进行智能相对路径解析
     await enhanceRelativePathsWithIndexedDB(results, sourceUrl);
 
+    // 🔥 Vue 路由静态分析（从 JS 代码中提取路由配置）
+    // 初始化 Vue 路由结果数组
+    if (!results.vueRoutes) {
+        results.vueRoutes = [];
+    }
+    
+    // 使用 RouterAnalyzer 从代码中静态提取路由
+    if (typeof window.RouterAnalyzer !== 'undefined' && window.RouterAnalyzer.extractRoutesFromCode) {
+        try {
+            const staticRoutes = window.RouterAnalyzer.extractRoutesFromCode(content, sourceUrl);
+            
+            if (staticRoutes && staticRoutes.length > 0) {
+                console.log(`✅ [Vue] 从代码中静态提取到 ${staticRoutes.length} 个路由`);
+                
+                staticRoutes.forEach(route => {
+                    const routePath = route.path || route.fullPath || '';
+                    const fullUrl = route.fullUrl || '';
+                    
+                    // 使用完整 URL 作为显示值（如果有的话）
+                    const displayValue = fullUrl || routePath;
+                    
+                    // 🔥 去重：同时检查路径和完整URL，避免重复
+                    const isDuplicate = results.vueRoutes.some(r => {
+                        const existingPath = r.path || r.value;
+                        const existingFullUrl = r.fullUrl || '';
+                        // 如果路径相同且完整URL也相同（或都为空），则认为是重复
+                        return existingPath === routePath || (fullUrl && existingFullUrl === fullUrl);
+                    });
+                    
+                    if (routePath && !isDuplicate) {
+                        const vueRoute = {
+                            value: displayValue,
+                            path: routePath,
+                            fullUrl: fullUrl,
+                            name: route.name || '',
+                            meta: route.meta || {},
+                            sourceUrl: sourceUrl,
+                            source: 'static-analysis',
+                            extractedAt: new Date().toISOString()
+                        };
+                        
+                        results.vueRoutes.push(vueRoute);
+                        
+                        // 🔥 将 Vue 路由添加到深度扫描队列中（通过 urls 数组）
+                        if (fullUrl && fullUrl.startsWith('http')) {
+                            if (!results.urls) {
+                                results.urls = [];
+                            }
+                            // 避免重复添加
+                            if (!results.urls.some(u => (typeof u === 'object' ? u.value : u) === fullUrl)) {
+                                results.urls.push({
+                                    value: fullUrl,
+                                    sourceUrl: sourceUrl,
+                                    type: 'vue-route',
+                                    extractedAt: new Date().toISOString()
+                                });
+                                console.log(`🔗 [Vue] 将路由添加到深度扫描队列: ${fullUrl}`);
+                            }
+                        }
+                    }
+                });
+                
+                console.log(`📊 [Vue] 静态分析路由统计: ${results.vueRoutes.length} 个路由`);
+            }
+        } catch (staticError) {
+            console.warn('⚠️ [Vue] 静态路由分析失败:', staticError.message);
+        }
+    }
+    
+    // 🔥 Vue 运行时检测集成（仅在页面上下文中有效）
+    if (typeof window.VueDetectorBridge !== 'undefined') {
+        try {
+            const vueBridge = new window.VueDetectorBridge();
+            const vueResult = await vueBridge.detect();
+            
+            if (vueResult && vueResult.detected) {
+                console.log('✅ [Vue] Vue 运行时检测成功:', vueResult.framework);
+                
+                // 合并 Vue 路由结果
+                if (vueResult.routes && Array.isArray(vueResult.routes)) {
+                    vueResult.routes.forEach(route => {
+                        const routePath = route.path || route.fullPath || '';
+                        if (!routePath) return;
+                        
+                        // 🔥 先构建完整 URL
+                        let fullUrl = '';
+                        try {
+                            const urlObj = new URL(sourceUrl);
+                            
+                            // 🔥 获取应用基础路径（去掉文件名和资源目录）
+                            let basePath = urlObj.pathname;
+                            
+                            // 如果路径以 .js/.html/.css 等文件结尾，取其目录路径
+                            if (/\.(js|html|css|json|vue)(\?.*)?$/i.test(basePath)) {
+                                basePath = basePath.substring(0, basePath.lastIndexOf('/') + 1);
+                            }
+                            
+                            // 移除资源目录
+                            const assetDirs = ['assets', 'dist', 'js', 'css', 'static', 'build', 'public'];
+                            const pathParts = basePath.split('/').filter(Boolean);
+                            
+                            while (pathParts.length > 0) {
+                                const lastPart = pathParts[pathParts.length - 1].toLowerCase();
+                                if (assetDirs.includes(lastPart)) {
+                                    pathParts.pop();
+                                } else {
+                                    break;
+                                }
+                            }
+                            
+                            basePath = '/' + pathParts.join('/');
+                            if (!basePath.endsWith('/')) {
+                                basePath += '/';
+                            }
+                            
+                            if (routePath.startsWith('#')) {
+                                fullUrl = `${urlObj.origin}${basePath}${routePath}`;
+                            } else {
+                                // 默认使用 hash 路由格式
+                                fullUrl = `${urlObj.origin}${basePath}#${routePath}`;
+                            }
+                        } catch (e) {
+                            fullUrl = routePath;
+                        }
+                        
+                        // 🔥 去重检查：同时检查路径和完整URL
+                        const isDuplicate = results.vueRoutes.some(r => {
+                            const existingPath = r.path || r.value;
+                            const existingFullUrl = r.fullUrl || '';
+                            return existingPath === routePath || (fullUrl && existingFullUrl === fullUrl);
+                        });
+                        
+                        if (isDuplicate) return;
+                        
+                        const vueRoute = {
+                            value: fullUrl || routePath,
+                            path: routePath,
+                            fullUrl: fullUrl,
+                            name: route.name || '',
+                            meta: route.meta || {},
+                            sourceUrl: sourceUrl,
+                            source: 'runtime',
+                            extractedAt: new Date().toISOString()
+                        };
+                        
+                        results.vueRoutes.push(vueRoute);
+                        
+                        // 🔥 将运行时检测到的路由也添加到深度扫描队列
+                        if (fullUrl && fullUrl.startsWith('http')) {
+                            if (!results.urls) {
+                                results.urls = [];
+                            }
+                            // 避免重复添加
+                            if (!results.urls.some(u => (typeof u === 'object' ? u.value : u) === fullUrl)) {
+                                results.urls.push({
+                                    value: fullUrl,
+                                    sourceUrl: sourceUrl,
+                                    type: 'vue-route-runtime',
+                                    extractedAt: new Date().toISOString()
+                                });
+                                console.log(`🔗 [Vue] 将运行时路由添加到深度扫描队列: ${fullUrl}`);
+                            }
+                        }
+                    });
+                }
+                
+                results.vueDetection = {
+                    detected: true,
+                    framework: vueResult.framework,
+                    routeCount: vueResult.routes?.length || 0,
+                    modifiedRoutes: vueResult.modifiedRoutes || []
+                };
+                
+                console.log(`📊 [Vue] 运行时路由统计: ${results.vueRoutes.length} 个路由`);
+            }
+        } catch (vueError) {
+            console.warn('⚠️ [Vue] Vue 运行时检测失败:', vueError.message);
+        }
+    }
+
     return results;
+}
+
+// 合并 AST 提取结果到正则结果
+function mergeASTResults(regexResults, astDetections, sourceUrl) {
+    const merged = { ...regexResults };
+    
+    // 🔥 收集所有已存在的值，用于跨类别去重
+    const allExistingValues = new Set();
+    Object.values(merged).forEach(arr => {
+        if (Array.isArray(arr)) {
+            arr.forEach(item => {
+                const v = typeof item === 'object' ? item.value : item;
+                if (v) allExistingValues.add(v);
+            });
+        }
+    });
+    
+    for (const detection of astDetections) {
+        // 根据检测类型和值确定结果键
+        let resultKey = 'credentials';
+        
+        if (detection.type === 'api_endpoint') {
+            const value = detection.value || '';
+            // 判断是绝对路径还是相对路径
+            if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('//')) {
+                resultKey = 'absoluteApis';
+            } else if (value.startsWith('/')) {
+                resultKey = 'relativeApis';
+            } else {
+                resultKey = 'absoluteApis';
+            }
+        } else if (detection.type === 'credential') {
+            resultKey = 'credentials';
+        } else if (detection.type === 'sensitive_function') {
+            resultKey = 'credentials';
+        } else if (detection.type === 'config_object') {
+            resultKey = 'credentials';
+        } else if (detection.type === 'encoded_string') {
+            resultKey = 'credentials';
+        }
+        
+        if (!merged[resultKey]) {
+            merged[resultKey] = [];
+        }
+        
+        const value = detection.value;
+        
+        // 🔥 跨类别去重：检查值是否已在任何类别中存在
+        if (!value || allExistingValues.has(value)) {
+            continue;
+        }
+        
+        // 检查是否已存在于当前类别
+        const exists = merged[resultKey].some(item => 
+            (typeof item === 'object' ? item.value : item) === value
+        );
+        
+        if (!exists) {
+            merged[resultKey].push({
+                value: value,
+                sourceUrl: sourceUrl,
+                extractedAt: new Date().toISOString(),
+                pageTitle: document.title || 'Deep Scan',
+                confidence: detection.confidence || 0.8,
+                context: detection.context,
+                source: 'ast'
+            });
+            allExistingValues.add(value);
+        }
+    }
+    
+    return merged;
 }
 
 // -------------------- 智能相对路径解析 --------------------
@@ -885,6 +1593,24 @@ function performDisplayUpdate() {
 function batchMergeResults(newResults) {
     let hasNewData = false;
     
+    // 🔥 确保 domains 的 pendingResults 存在
+    if (!pendingResults['domains']) {
+        pendingResults['domains'] = new Map();
+    }
+    
+    // 🔥 定义所有可能包含 URL 的键，用于域名提取
+    const urlContainingKeys = [
+        'urls',           // 完整 URL
+        'absoluteApis',   // 绝对路径 API（可能包含完整 URL）
+        'jsFiles',        // JS 文件 URL
+        'cssFiles',       // CSS 文件 URL
+        'images',         // 图片 URL
+        'vueRoutes',      // Vue 路由（可能包含完整 URL）
+        'webpackChunks',  // Webpack chunk URL
+        'githubUrls',     // GitHub URL
+        'webhookUrls'     // Webhook URL
+    ];
+    
     // 将新结果添加到待处理队列
     Object.keys(newResults).forEach(key => {
         if (!pendingResults[key]) {
@@ -903,13 +1629,33 @@ function batchMergeResults(newResults) {
                         }
                     }
                     // 处理结构化对象（带sourceUrl）和简单字符串
-                    const itemKey = typeof item === 'object' ? item.value : item;
+                    const itemKey = typeof item === 'object' ? (item.value || item.url || item.path || item.fullUrl) : item;
                     const itemData = typeof item === 'object' ? item : { value: item, sourceUrl: 'unknown' };
                     
                     if (itemKey == null) return;
                     if (!pendingResults[key].has(itemKey)) {
                         pendingResults[key].set(itemKey, itemData);
                         hasNewData = true;
+                        
+                        // 🔥 增强：从所有可能包含 URL 的键中提取域名
+                        if (urlContainingKeys.includes(key) && itemKey) {
+                            // 尝试从 value 或 fullUrl 中提取域名
+                            const urlToExtract = itemKey.startsWith('http') ? itemKey : 
+                                                 (item.fullUrl && item.fullUrl.startsWith('http') ? item.fullUrl : null);
+                            
+                            if (urlToExtract) {
+                                const extractedDomain = extractDomainFromUrl(urlToExtract);
+                                if (extractedDomain && !pendingResults['domains'].has(extractedDomain)) {
+                                    pendingResults['domains'].set(extractedDomain, {
+                                        value: extractedDomain,
+                                        sourceUrl: itemData.sourceUrl || 'unknown',
+                                        extractedAt: new Date().toISOString(),
+                                        extractedFrom: key // 记录来源类型
+                                    });
+                                    console.log(`✅ [深度扫描] 从 ${key} 提取域名: ${extractedDomain}`);
+                                }
+                            }
+                        }
                     }
                 }
             });
@@ -922,6 +1668,60 @@ function batchMergeResults(newResults) {
     }
     
     return hasNewData;
+}
+
+/**
+ * 🔥 从URL中提取域名
+ * @param {string} url - 完整的URL
+ * @returns {string|null} 提取的域名，如果无法提取则返回null
+ */
+function extractDomainFromUrl(url) {
+    if (!url || typeof url !== 'string') {
+        return null;
+    }
+    
+    try {
+        // 必须以 http:// 或 https:// 开头
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            return null;
+        }
+        
+        // 移除协议前缀
+        let domain = url.replace(/^https?:\/\//, '');
+        
+        // 移除www前缀
+        domain = domain.replace(/^www\./, '');
+        
+        // 移除路径、查询参数、锚点和端口
+        domain = domain.split('/')[0];
+        domain = domain.split('?')[0];
+        domain = domain.split('#')[0];
+        domain = domain.split(':')[0];
+        
+        // 清理并转小写
+        domain = domain.toLowerCase().trim();
+        
+        // 验证域名格式
+        if (!domain || domain.length < 3 || !domain.includes('.')) {
+            return null;
+        }
+        
+        // 检查是否是IP地址（不作为域名返回）
+        if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(domain)) {
+            return null;
+        }
+        
+        // 🔥 过滤掉常见的框架文档域名
+        const blacklist = ['w3.org', 'w3schools.com', 'mozilla.org', 'github.com', 
+                          'stackoverflow.com', 'vuejs.org', 'reactjs.org', 'angular.io'];
+        if (blacklist.some(b => domain.includes(b))) {
+            return null;
+        }
+        
+        return domain;
+    } catch (error) {
+        return null;
+    }
 }
 
 // 将待处理结果合并到主结果中
@@ -1040,8 +1840,64 @@ async function initializePage() {
         }
     });
 
-    // 自动开始
-    setTimeout(startScan, 1000);
+    // 初始化 AST 系统并等待完成后再开始扫描
+    initASTSystem().then(() => {
+        console.log('✅ AST 系统初始化完成，准备开始扫描');
+        // 自动开始扫描
+        setTimeout(startScan, 500);
+    }).catch(err => {
+        console.warn('⚠️ AST 系统初始化失败，将使用正则模式:', err.message);
+        // 即使 AST 失败也继续扫描
+        setTimeout(startScan, 500);
+    });
+}
+
+// -------------------- AST 系统初始化 --------------------
+async function initASTSystem() {
+    console.log('🔄 [AST] 开始初始化 AST 系统...');
+    
+    try {
+        // 检查依赖
+        console.log('🔍 [AST] 检查依赖:');
+        console.log('  - window.acorn:', !!window.acorn);
+        console.log('  - window.ASTExtractor:', !!window.ASTExtractor);
+        console.log('  - window.ASTBridge:', !!window.ASTBridge);
+        console.log('  - window.astBridge:', !!window.astBridge);
+        console.log('  - window.initASTExtractor:', typeof window.initASTExtractor);
+        
+        // 优先使用 astBridge
+        if (window.astBridge) {
+            console.log('🔄 [AST] 使用 ASTBridge 初始化...');
+            const initResult = await window.astBridge.init();
+            
+            if (initResult && window.astBridge.isAvailable()) {
+                console.log('✅ [AST] ASTBridge 初始化成功');
+                console.log('📊 [AST] 已注册访问器:', window.astBridge.extractor?.getVisitors()?.map(v => v.name) || []);
+                return true;
+            } else {
+                console.warn('⚠️ [AST] ASTBridge 初始化返回 false 或不可用');
+            }
+        }
+        
+        // 备选：使用 initASTExtractor
+        if (typeof window.initASTExtractor === 'function') {
+            console.log('🔄 [AST] 使用 initASTExtractor 初始化...');
+            await window.initASTExtractor();
+            
+            if (window.astExtractor) {
+                console.log('✅ [AST] ASTExtractor 初始化成功');
+                return true;
+            }
+        }
+        
+        console.warn('⚠️ [AST] AST 模块未加载或初始化失败，将仅使用正则提取');
+        return false;
+        
+    } catch (error) {
+        console.error('❌ [AST] AST 系统初始化失败:', error);
+        console.warn('⚠️ [AST] 将仅使用正则提取');
+        return false;
+    }
 }
 
 // -------------------- 配置显示 --------------------
@@ -1073,6 +1929,10 @@ function initializeScanResults() {
         jsFiles: [],
         cssFiles: [],
         vueFiles: [],
+        vueRoutes: [],           // 🔥 Vue 路由
+        vueSensitiveRoutes: [],  // 🔥 Vue 敏感路由
+        sourceMapSources: [],    // 🔥 Source Map 源文件列表
+        sourceMapFiles: [],      // 🔥 发现的 Source Map 文件
         emails: [],
         phoneNumbers: [],
         ipAddresses: [],
@@ -1096,8 +1956,292 @@ function initializeScanResults() {
         gitlabTokens: [],
         webhookUrls: [],
         idCards: [],
-        cryptoUsage: []
+        cryptoUsage: [],
+        // 🔥 Webpack 相关结果
+        webpackChunks: [],
+        webpackSourceMaps: [],
+        webpackDefineConstants: []
     };
+}
+
+// -------------------- Webpack 扫描 --------------------
+/**
+ * 🔥 执行 Webpack 扫描
+ * 注意：深度扫描窗口是独立的扩展页面，无法直接检测目标网站的 Webpack
+ * 因此我们从普通扫描结果中获取 Webpack 信息，或者通过分析 JS 文件内容来检测
+ */
+async function performWebpackScan() {
+    addLogEntry('🔍 [Webpack] 开始 Webpack 检测...', 'info');
+    
+    try {
+        // 🔥 方法1：从普通扫描结果中获取 Webpack 信息
+        if (scanConfig.initialResults?.webpackDetection) {
+            const webpackResult = scanConfig.initialResults.webpackDetection;
+            if (webpackResult.detected) {
+                addLogEntry(`✅ [Webpack] 从普通扫描结果中检测到 Webpack ${webpackResult.version || 'unknown'}`, 'success');
+                processWebpackResult(webpackResult);
+                return;
+            }
+        }
+        
+        // 🔥 方法2：通过分析页面 HTML 内容检测 Webpack 特征
+        // 获取目标页面的 HTML 内容
+        const baseUrl = scanConfig.baseUrl;
+        if (baseUrl) {
+            try {
+                addLogEntry(`🔍 [Webpack] 尝试从目标页面检测 Webpack: ${baseUrl}`, 'info');
+                const pageContent = await fetchUrlContent(baseUrl);
+                
+                if (pageContent) {
+                    const webpackResult = detectWebpackFromContent(pageContent, baseUrl);
+                    if (webpackResult.detected) {
+                        addLogEntry(`✅ [Webpack] 从页面内容检测到 Webpack`, 'success');
+                        processWebpackResult(webpackResult);
+                        return;
+                    }
+                }
+            } catch (fetchError) {
+                addLogEntry(`⚠️ [Webpack] 获取页面内容失败: ${fetchError.message}`, 'warning');
+            }
+        }
+        
+        addLogEntry('ℹ️ [Webpack] 未检测到 Webpack 打包', 'info');
+        
+    } catch (error) {
+        console.error('[Webpack] 扫描失败:', error);
+        addLogEntry(`❌ [Webpack] 扫描失败: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * 🔥 从页面内容中检测 Webpack 特征
+ */
+function detectWebpackFromContent(content, sourceUrl) {
+    const result = {
+        detected: false,
+        version: null,
+        buildMode: 'unknown',
+        chunks: [],
+        sourceMaps: [],
+        defineConstants: [],
+        apiEndpoints: []
+    };
+    
+    try {
+        // 检测 Webpack 特征
+        const webpackPatterns = [
+            /webpackJsonp/,
+            /webpackChunk/,
+            /__webpack_require__/,
+            /__webpack_modules__/,
+            /webpack\/runtime/,
+            /\/\*\!\s*\*{3,}\s*\*!\s*webpack/i
+        ];
+        
+        for (const pattern of webpackPatterns) {
+            if (pattern.test(content)) {
+                result.detected = true;
+                break;
+            }
+        }
+        
+        if (!result.detected) {
+            return result;
+        }
+        
+        // 检测版本
+        const versionMatch = content.match(/webpack\s*[v\/]?(\d+(?:\.\d+)*)/i);
+        if (versionMatch) {
+            result.version = versionMatch[1];
+        }
+        
+        // 检测构建模式
+        if (content.includes('production') || content.includes('.min.js')) {
+            result.buildMode = 'production';
+        } else if (content.includes('development') || content.includes('devtool')) {
+            result.buildMode = 'development';
+        }
+        
+        // 提取 chunk 文件引用
+        const chunkPatterns = [
+            /["']([^"']*?(?:chunk|bundle|vendor|main|app)[^"']*?\.js)["']/gi,
+            /src=["']([^"']+\.js)["']/gi,
+            /["'](\/?(?:static|assets|dist|js)\/[^"']+\.js)["']/gi
+        ];
+        
+        for (const pattern of chunkPatterns) {
+            let match;
+            while ((match = pattern.exec(content)) !== null) {
+                const chunkUrl = match[1];
+                if (chunkUrl && !chunkUrl.includes('node_modules')) {
+                    result.chunks.push({
+                        url: chunkUrl,
+                        type: 'chunk'
+                    });
+                }
+            }
+        }
+        
+        // 提取 Source Map 引用
+        const sourceMapPattern = /\/\/[#@]\s*sourceMappingURL=([^\s\n]+)/g;
+        let smMatch;
+        while ((smMatch = sourceMapPattern.exec(content)) !== null) {
+            const mapUrl = smMatch[1];
+            if (mapUrl && !mapUrl.startsWith('data:')) {
+                result.sourceMaps.push({
+                    sourceMapUrl: mapUrl,
+                    jsFile: sourceUrl,
+                    isInline: false
+                });
+            }
+        }
+        
+        // 提取 DefinePlugin 常量（process.env.XXX）
+        const definePattern = /process\.env\.([A-Z_][A-Z0-9_]*)\s*(?:===?|!==?)\s*["']([^"']+)["']/gi;
+        let defineMatch;
+        while ((defineMatch = definePattern.exec(content)) !== null) {
+            result.defineConstants.push({
+                name: `process.env.${defineMatch[1]}`,
+                value: defineMatch[2]
+            });
+        }
+        
+        console.log('[Webpack] 从内容检测结果:', {
+            detected: result.detected,
+            version: result.version,
+            chunks: result.chunks.length,
+            sourceMaps: result.sourceMaps.length
+        });
+        
+    } catch (error) {
+        console.warn('[Webpack] 内容检测失败:', error);
+    }
+    
+    return result;
+}
+
+/**
+ * 🔥 处理 Webpack 扫描结果
+ */
+function processWebpackResult(webpackResult) {
+    try {
+        if (!webpackResult || !webpackResult.detected) {
+            return;
+        }
+        
+        // 处理 chunks
+        if (webpackResult.chunks && webpackResult.chunks.length > 0) {
+            addLogEntry(`📦 [Webpack] 发现 ${webpackResult.chunks.length} 个 chunk 文件`, 'info');
+            
+            // 解析 chunk URL 为完整路径
+            const baseUrl = scanConfig.baseUrl;
+            for (const chunk of webpackResult.chunks) {
+                let chunkUrl = chunk.url;
+                
+                // 如果是相对路径，转换为绝对路径
+                if (chunkUrl && !chunkUrl.startsWith('http')) {
+                    try {
+                        chunkUrl = new URL(chunkUrl, baseUrl).href;
+                    } catch (e) {
+                        // 保持原样
+                    }
+                }
+                
+                if (chunkUrl) {
+                    scanResults.webpackChunks.push({
+                        value: chunkUrl,
+                        type: chunk.type || 'chunk',
+                        source: 'webpack',
+                        extractedAt: new Date().toISOString()
+                    });
+                    
+                    // 将 chunk URL 添加到待扫描队列
+                    if (!chunkUrl.startsWith('data:')) {
+                        pendingUrls.add(chunkUrl);
+                    }
+                }
+            }
+        }
+        
+        // 处理 Source Map
+        if (webpackResult.sourceMaps && webpackResult.sourceMaps.length > 0) {
+            addLogEntry(`🗺️ [Webpack] 发现 ${webpackResult.sourceMaps.length} 个 Source Map`, 'info');
+            
+            const baseUrl = scanConfig.baseUrl;
+            for (const sm of webpackResult.sourceMaps) {
+                let mapUrl = sm.sourceMapUrl;
+                
+                // 如果是相对路径，转换为绝对路径
+                if (mapUrl && !mapUrl.startsWith('http') && !mapUrl.startsWith('data:')) {
+                    try {
+                        mapUrl = new URL(mapUrl, baseUrl).href;
+                    } catch (e) {
+                        // 保持原样
+                    }
+                }
+                
+                if (mapUrl) {
+                    scanResults.webpackSourceMaps.push({
+                        value: mapUrl,
+                        jsFile: sm.jsFile,
+                        isInline: sm.isInline || false,
+                        source: 'webpack',
+                        extractedAt: new Date().toISOString()
+                    });
+                    
+                    // 将外部 Source Map URL 添加到待扫描队列
+                    if (!sm.isInline && !mapUrl.startsWith('data:')) {
+                        pendingUrls.add(mapUrl);
+                        addLogEntry(`🗺️ [Webpack] 添加 Source Map 到扫描队列: ${mapUrl}`, 'info');
+                    }
+                }
+            }
+        }
+        
+        // 处理 DefinePlugin 常量
+        if (webpackResult.defineConstants && webpackResult.defineConstants.length > 0) {
+            addLogEntry(`⚙️ [Webpack] 发现 ${webpackResult.defineConstants.length} 个 DefinePlugin 常量`, 'info');
+            for (const c of webpackResult.defineConstants) {
+                scanResults.webpackDefineConstants.push({
+                    value: `${c.name}: ${c.value}`,
+                    name: c.name,
+                    source: 'webpack',
+                    extractedAt: new Date().toISOString()
+                });
+            }
+        }
+        
+        // 处理 API 端点
+        if (webpackResult.apiEndpoints && webpackResult.apiEndpoints.length > 0) {
+            addLogEntry(`🔗 [Webpack] 发现 ${webpackResult.apiEndpoints.length} 个 API 端点`, 'info');
+            for (const endpoint of webpackResult.apiEndpoints) {
+                if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
+                    if (!scanResults.absoluteApis.some(a => (typeof a === 'object' ? a.value : a) === endpoint)) {
+                        scanResults.absoluteApis.push({
+                            value: endpoint,
+                            source: 'webpack',
+                            extractedAt: new Date().toISOString()
+                        });
+                    }
+                } else if (endpoint.startsWith('/')) {
+                    if (!scanResults.relativeApis.some(a => (typeof a === 'object' ? a.value : a) === endpoint)) {
+                        scanResults.relativeApis.push({
+                            value: endpoint,
+                            source: 'webpack',
+                            extractedAt: new Date().toISOString()
+                        });
+                    }
+                }
+            }
+        }
+        
+        // 更新显示
+        throttledUpdateDisplay();
+        
+    } catch (error) {
+        console.error('[Webpack] 处理结果失败:', error);
+        addLogEntry(`❌ [Webpack] 处理结果失败: ${error.message}`, 'error');
+    }
 }
 
 // -------------------- 扫描控制 --------------------
@@ -1120,6 +2264,9 @@ async function startScan() {
     document.getElementById('loadingDiv').style.display = 'none';
     
     try {
+        // 🔥 执行 Webpack 扫描
+        await performWebpackScan();
+        
         // 收集初始URL
         const initialUrls = await collectInitialUrls();
         //console.log(`📋 [DEBUG] 收集到 ${initialUrls.length} 个初始URL`);
@@ -1533,6 +2680,65 @@ async function makeRequestViaBackground(url, options = {}) {
     });
 }
 
+// -------------------- Source Map URL 收集 --------------------
+/**
+ * 🔥 从内容中提取 Source Map URL
+ * @param {string} content - 文件内容
+ * @param {string} baseUrl - 基础 URL
+ * @param {Set} urls - URL 集合
+ */
+async function collectSourceMapUrls(content, baseUrl, urls) {
+    if (!content) return;
+    
+    try {
+        // 匹配 sourceMappingURL 注释
+        const patterns = [
+            /\/\/[#@]\s*sourceMappingURL=([^\s\n]+)/g,
+            /\/\*[#@]\s*sourceMappingURL=([^\s*]+)\s*\*\//g
+        ];
+        
+        for (const pattern of patterns) {
+            let match;
+            while ((match = pattern.exec(content)) !== null) {
+                const sourceMapUrl = match[1];
+                
+                if (!sourceMapUrl) continue;
+                
+                // 跳过内联 Source Map
+                if (sourceMapUrl.startsWith('data:')) {
+                    console.log('🗺️ [SourceMap] 发现内联 Source Map，将直接解析');
+                    // 内联 Source Map 会在 extractFromContent 中处理
+                    continue;
+                }
+                
+                // 解析为完整 URL
+                const fullUrl = await resolveUrl(sourceMapUrl, baseUrl);
+                if (fullUrl && await isSameDomain(fullUrl, baseUrl)) {
+                    urls.add(fullUrl);
+                    console.log(`🗺️ [SourceMap] 添加 Source Map 到扫描队列: ${fullUrl}`);
+                    
+                    // 记录到结果中
+                    if (!scanResults.sourceMapFiles) {
+                        scanResults.sourceMapFiles = [];
+                    }
+                    const exists = scanResults.sourceMapFiles.some(
+                        item => (typeof item === 'object' ? item.value : item) === fullUrl
+                    );
+                    if (!exists) {
+                        scanResults.sourceMapFiles.push({
+                            value: fullUrl,
+                            sourceUrl: baseUrl,
+                            extractedAt: new Date().toISOString()
+                        });
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ [SourceMap] 提取 Source Map URL 失败:', error.message);
+    }
+}
+
 // -------------------- 从内容收集URL --------------------
 async function collectUrlsFromContent(content, baseUrl) {
     const urls = new Set();
@@ -1548,6 +2754,47 @@ async function collectUrlsFromContent(content, baseUrl) {
                 const fullUrl = await resolveUrl(jsFile, baseUrl, sourceUrl);
                 if (fullUrl && await isSameDomain(fullUrl, baseUrl)) {
                     urls.add(fullUrl);
+                    
+                    // 🔥 自动收集对应的 Source Map 文件
+                    const mapUrl = fullUrl + '.map';
+                    if (await isSameDomain(mapUrl, baseUrl)) {
+                        urls.add(mapUrl);
+                        console.log(`🗺️ [SourceMap] 自动添加 Source Map: ${mapUrl}`);
+                    }
+                }
+            }
+        }
+        
+        // 🔥 收集 Vue 文件
+        if (extractedData.vueFiles && extractedData.vueFiles.length > 0) {
+            console.log(`🟢 [Vue] 发现 ${extractedData.vueFiles.length} 个 Vue 文件`);
+            for (const vueFileItem of extractedData.vueFiles) {
+                const vueFile = typeof vueFileItem === 'object' ? vueFileItem.value : vueFileItem;
+                const sourceUrl = typeof vueFileItem === 'object' ? vueFileItem.sourceUrl : null;
+                const fullUrl = await resolveUrl(vueFile, baseUrl, sourceUrl);
+                if (fullUrl && await isSameDomain(fullUrl, baseUrl)) {
+                    urls.add(fullUrl);
+                    console.log(`🟢 [Vue] 添加 Vue 文件到扫描队列: ${fullUrl}`);
+                }
+            }
+        }
+        
+        // 🔥 收集 Source Map 文件
+        if (extractedData.sourceMapSources && extractedData.sourceMapSources.length > 0) {
+            console.log(`🗺️ [SourceMap] 发现 ${extractedData.sourceMapSources.length} 个源文件引用`);
+        }
+        
+        // 🔥 从 JS 代码中提取 Source Map URL
+        await collectSourceMapUrls(content, baseUrl, urls);
+        
+        // 🔥 收集 Vue 路由（优先处理，不受 scanHtmlFiles 限制）
+        if (extractedData.vueRoutes && extractedData.vueRoutes.length > 0) {
+            console.log(`🛤️ [Vue] 发现 ${extractedData.vueRoutes.length} 个 Vue 路由，添加到深度扫描队列`);
+            for (const routeItem of extractedData.vueRoutes) {
+                const routeUrl = typeof routeItem === 'object' ? (routeItem.fullUrl || routeItem.value) : routeItem;
+                if (routeUrl && routeUrl.startsWith('http') && await isSameDomain(routeUrl, baseUrl)) {
+                    urls.add(routeUrl);
+                    console.log(`🔗 [Vue] 添加路由到扫描队列: ${routeUrl}`);
                 }
             }
         }
@@ -1881,6 +3128,9 @@ function updateResultsDisplay() {
         jsFiles: { containerId: 'jsFilesResult', countId: 'jsFilesCount', listId: 'jsFilesList' },
         cssFiles: { containerId: 'cssFilesResult', countId: 'cssFilesCount', listId: 'cssFilesList' },
         vueFiles: { containerId: 'vueFilesResult', countId: 'vueFilesCount', listId: 'vueFilesList' },
+        vueRoutes: { containerId: 'vueRoutesResult', countId: 'vueRoutesCount', listId: 'vueRoutesList' },
+        sourceMapSources: { containerId: 'sourceMapSourcesResult', countId: 'sourceMapSourcesCount', listId: 'sourceMapSourcesList' },
+        sourceMapFiles: { containerId: 'sourceMapFilesResult', countId: 'sourceMapFilesCount', listId: 'sourceMapFilesList' },
         emails: { containerId: 'emailsResult', countId: 'emailsCount', listId: 'emailsList' },
         phoneNumbers: { containerId: 'phoneNumbersResult', countId: 'phoneNumbersCount', listId: 'phoneNumbersList' },
         ipAddresses: { containerId: 'ipAddressesResult', countId: 'ipAddressesCount', listId: 'ipAddressesList' },
@@ -1904,7 +3154,11 @@ function updateResultsDisplay() {
         gitlabTokens: { containerId: 'gitlabTokensResult', countId: 'gitlabTokensCount', listId: 'gitlabTokensList' },
         webhookUrls: { containerId: 'webhookUrlsResult', countId: 'webhookUrlsCount', listId: 'webhookUrlsList' },
         idCards: { containerId: 'idCardsResult', countId: 'idCardsCount', listId: 'idCardsList' },
-        cryptoUsage: { containerId: 'cryptoUsageResult', countId: 'cryptoUsageCount', listId: 'cryptoUsageList' }
+        cryptoUsage: { containerId: 'cryptoUsageResult', countId: 'cryptoUsageCount', listId: 'cryptoUsageList' },
+        // 🔥 Webpack 相关
+        webpackChunks: { containerId: 'webpackChunksResult', countId: 'webpackChunksCount', listId: 'webpackChunksList' },
+        webpackSourceMaps: { containerId: 'webpackSourceMapsResult', countId: 'webpackSourceMapsCount', listId: 'webpackSourceMapsList' },
+        webpackDefineConstants: { containerId: 'webpackDefineConstantsResult', countId: 'webpackDefineConstantsCount', listId: 'webpackDefineConstantsList' }
     };
     
     // 🔥 修复显示逻辑：使用正确的元素ID
@@ -1973,14 +3227,11 @@ function updateResultsDisplay() {
                         li.textContent = displayValue;
                         li.title = titleValue;
 
-                        // 如果有来源URL，添加右键点击跳转功能
-                        if (sourceUrl) {
-                            li.style.cursor = 'pointer';
-                            li.addEventListener('contextmenu', (e) => {
-                                e.preventDefault();
-                                window.open(sourceUrl, '_blank');
-                            });
-                        }
+                        // 添加右键菜单功能
+                        li.style.cursor = 'pointer';
+                        li.addEventListener('contextmenu', (e) => {
+                            showContextMenu(e, item, sourceUrl);
+                        });
                         
                         fragment.appendChild(li);
                     });
@@ -2093,14 +3344,11 @@ function createCustomResultCategory(key, items) {
             li.textContent = displayValue;
             li.title = titleValue;
 
-            // 如果有来源URL，添加右键点击跳转功能
-            if (sourceUrl) {
-                li.style.cursor = 'pointer';
-                li.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    window.open(sourceUrl, '_blank');
-                });
-            }
+            // 添加右键菜单功能
+            li.style.cursor = 'pointer';
+            li.addEventListener('contextmenu', (e) => {
+                showContextMenu(e, item, sourceUrl);
+            });
             
             listElement.appendChild(li);
         });
@@ -2464,8 +3712,25 @@ function isValidPageUrl(url) {
         return false;
     }
     
-    const resourceExtensions = /\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|ttf|eot|woff2|map|pdf|zip)$/i;
+    // 🔥 允许 .vue 和 .map 文件被扫描（从排除列表中移除）
+    const resourceExtensions = /\.(css|png|jpg|jpeg|gif|svg|ico|woff|ttf|eot|woff2|pdf|zip)$/i;
     return !resourceExtensions.test(url.toLowerCase());
+}
+
+/**
+ * 🔥 检查是否为可扫描的特殊文件类型
+ * @param {string} url - URL
+ * @returns {string|null} 文件类型或 null
+ */
+function getSpecialFileType(url) {
+    if (!url) return null;
+    const lowerUrl = url.toLowerCase();
+    
+    if (lowerUrl.endsWith('.vue')) return 'vue';
+    if (lowerUrl.endsWith('.map') || lowerUrl.includes('.js.map')) return 'sourcemap';
+    if (lowerUrl.endsWith('.ts') || lowerUrl.endsWith('.tsx')) return 'typescript';
+    
+    return null;
 }
 
 // -------------------- 导出功能 --------------------
@@ -2779,6 +4044,9 @@ function updateResultsDisplayVirtual() {
         jsFiles: { containerId: 'jsFilesResult', countId: 'jsFilesCount', listId: 'jsFilesList' },
         cssFiles: { containerId: 'cssFilesResult', countId: 'cssFilesCount', listId: 'cssFilesList' },
         vueFiles: { containerId: 'vueFilesResult', countId: 'vueFilesCount', listId: 'vueFilesList' },
+        vueRoutes: { containerId: 'vueRoutesResult', countId: 'vueRoutesCount', listId: 'vueRoutesList' },
+        sourceMapSources: { containerId: 'sourceMapSourcesResult', countId: 'sourceMapSourcesCount', listId: 'sourceMapSourcesList' },
+        sourceMapFiles: { containerId: 'sourceMapFilesResult', countId: 'sourceMapFilesCount', listId: 'sourceMapFilesList' },
         emails: { containerId: 'emailsResult', countId: 'emailsCount', listId: 'emailsList' },
         phoneNumbers: { containerId: 'phoneNumbersResult', countId: 'phoneNumbersCount', listId: 'phoneNumbersList' },
         ipAddresses: { containerId: 'ipAddressesResult', countId: 'ipAddressesCount', listId: 'ipAddressesList' },
@@ -2802,20 +4070,48 @@ function updateResultsDisplayVirtual() {
         gitlabTokens: { containerId: 'gitlabTokensResult', countId: 'gitlabTokensCount', listId: 'gitlabTokensList' },
         webhookUrls: { containerId: 'webhookUrlsResult', countId: 'webhookUrlsCount', listId: 'webhookUrlsList' },
         idCards: { containerId: 'idCardsResult', countId: 'idCardsCount', listId: 'idCardsList' },
-        cryptoUsage: { containerId: 'cryptoUsageResult', countId: 'cryptoUsageCount', listId: 'cryptoUsageList' }
+        cryptoUsage: { containerId: 'cryptoUsageResult', countId: 'cryptoUsageCount', listId: 'cryptoUsageList' },
+        // 🔥 Webpack 相关
+        webpackChunks: { containerId: 'webpackChunksResult', countId: 'webpackChunksCount', listId: 'webpackChunksList' },
+        webpackSourceMaps: { containerId: 'webpackSourceMapsResult', countId: 'webpackSourceMapsCount', listId: 'webpackSourceMapsList' },
+        webpackDefineConstants: { containerId: 'webpackDefineConstantsResult', countId: 'webpackDefineConstantsCount', listId: 'webpackDefineConstantsList' }
     };
 
-    const defaultRender = (text) => {
+    // 渲染函数 - 支持右键菜单
+    const defaultRender = (itemData) => {
         const li = document.createElement('div');
         li.className = 'result-item';
         li.style.display = 'block';
         li.style.boxSizing = 'border-box';
         li.style.width = '100%';
-        // 可变高度：允许多行换行，避免重叠
         li.style.whiteSpace = 'normal';
         li.style.wordBreak = 'break-word';
         li.style.overflowWrap = 'anywhere';
-        li.textContent = String(text);
+        li.style.cursor = 'pointer';
+        
+        // 解析 itemData（可能是对象或字符串）
+        let displayText = '';
+        let sourceUrl = null;
+        let originalItem = itemData;
+        
+        if (typeof itemData === 'object' && itemData !== null) {
+            displayText = itemData.displayText || itemData.value || itemData.url || itemData.path || itemData.content || JSON.stringify(itemData);
+            sourceUrl = itemData.sourceUrl || null;
+            originalItem = itemData.originalItem || itemData;
+        } else {
+            displayText = String(itemData);
+        }
+        
+        li.textContent = displayText;
+        if (sourceUrl) {
+            li.title = '来源: ' + sourceUrl;
+        }
+        
+        // 添加右键菜单
+        li.addEventListener('contextmenu', (e) => {
+            showContextMenu(e, originalItem, sourceUrl);
+        });
+        
         return li;
     };
 
@@ -2846,15 +4142,27 @@ function updateResultsDisplayVirtual() {
             return String(it || '').trim() === '/';
         };
 
-        const toText = (it) => {
+        // 转换为渲染数据对象（包含显示文本和源信息）
+        const toRenderData = (it) => {
             if (typeof it === 'object' && it) {
                 const val = it.value || it.url || it.path || it.content || '';
+                let displayText;
                 if (key === 'relativeApis' && it.resolvedUrl) {
-                    return `${String(val)} → ${String(it.resolvedUrl)}`;
+                    displayText = `${String(val)} -> ${String(it.resolvedUrl)}`;
+                } else {
+                    displayText = String(val || JSON.stringify(it));
                 }
-                return String(val || JSON.stringify(it));
+                return {
+                    displayText: displayText,
+                    sourceUrl: it.sourceUrl || null,
+                    originalItem: it
+                };
             }
-            return String(it);
+            return {
+                displayText: String(it),
+                sourceUrl: null,
+                originalItem: it
+            };
         };
 
         const prevCount = __lastRenderedCounts[key] || 0;
@@ -2863,7 +4171,7 @@ function updateResultsDisplayVirtual() {
         // 如果数量减少或结构变化，进行全量重建
         if (!Array.isArray(itemsText) || itemsText.length > itemsRaw.length || prevCount > itemsRaw.length) {
             const filteredRaw = key === 'relativeApis' ? itemsRaw.filter(it => !isTrivialSlash(it)) : itemsRaw;
-            itemsText = filteredRaw.map(toText);
+            itemsText = filteredRaw.map(toRenderData);
             __renderedTextCache[key] = itemsText;
             __lastRenderedCounts[key] = itemsText.length;
             updateVirtualList(mapping.listId, itemsText, {
@@ -2877,7 +4185,7 @@ function updateResultsDisplayVirtual() {
             if (key === 'relativeApis') {
                 newSliceRaw = newSliceRaw.filter(it => !isTrivialSlash(it));
             }
-            const newSlice = newSliceRaw.map(toText);
+            const newSlice = newSliceRaw.map(toRenderData);
             itemsText.push(...newSlice);
             __lastRenderedCounts[key] = itemsRaw.length;
             updateVirtualListAppend(mapping.listId, newSlice, {
@@ -2943,5 +4251,246 @@ function updateLogDisplayVirtual() {
         logSection.scrollTop = logSection.scrollHeight;
     }
 }
+
+// -------------------- 右键菜单功能 --------------------
+
+/**
+ * 创建右键菜单
+ * @param {Object|string} item - 数据项
+ * @param {string} sourceUrl - 来源URL
+ */
+function createContextMenu(item, sourceUrl) {
+    const menu = document.createElement('div');
+    menu.className = 'context-menu';
+    menu.style.cssText = `
+        position: fixed;
+        background: #2c3e50;
+        color: #ecf0f1;
+        border: 1px solid #34495e;
+        border-radius: 6px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        z-index: 10001;
+        min-width: 180px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+
+    const menuItems = [
+        {
+            text: '复制内容',
+            icon: '',
+            action: () => {
+                let textToCopy;
+                if (typeof item === 'object' && item !== null) {
+                    textToCopy = item.value || item.text || item.content || item.url || item.path || JSON.stringify(item);
+                } else {
+                    textToCopy = String(item);
+                }
+                
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    showContextMenuNotification('内容已复制到剪贴板');
+                }).catch(() => {
+                    // 备用复制方法
+                    const textarea = document.createElement('textarea');
+                    textarea.value = textToCopy;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    showContextMenuNotification('内容已复制到剪贴板');
+                });
+            }
+        },
+        {
+            text: '复制提取位置',
+            icon: '',
+            action: () => {
+                const locationUrl = sourceUrl || (typeof item === 'object' ? item.sourceUrl : null);
+                if (locationUrl) {
+                    navigator.clipboard.writeText(locationUrl).then(() => {
+                        showContextMenuNotification('提取位置URL已复制到剪贴板');
+                    }).catch(() => {
+                        const textarea = document.createElement('textarea');
+                        textarea.value = locationUrl;
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                        showContextMenuNotification('提取位置URL已复制到剪贴板');
+                    });
+                } else {
+                    showContextMenuNotification('未找到提取位置URL', 'error');
+                }
+            }
+        },
+        {
+            text: '打开源页面',
+            icon: '',
+            action: () => {
+                const locationUrl = sourceUrl || (typeof item === 'object' ? item.sourceUrl : null);
+                if (locationUrl) {
+                    window.open(locationUrl, '_blank');
+                } else {
+                    showContextMenuNotification('未找到源页面URL', 'error');
+                }
+            }
+        }
+    ];
+
+    menuItems.forEach((menuItem, index) => {
+        const itemDiv = document.createElement('div');
+        itemDiv.style.cssText = `
+            padding: 10px 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            transition: background-color 0.15s ease;
+            ${index === 0 ? 'border-top-left-radius: 5px; border-top-right-radius: 5px;' : ''}
+            ${index === menuItems.length - 1 ? 'border-bottom-left-radius: 5px; border-bottom-right-radius: 5px;' : ''}
+        `;
+
+        const textSpan = document.createElement('span');
+        textSpan.textContent = menuItem.text;
+        
+        itemDiv.appendChild(textSpan);
+
+        itemDiv.addEventListener('mouseenter', () => {
+            itemDiv.style.backgroundColor = '#34495e';
+        });
+
+        itemDiv.addEventListener('mouseleave', () => {
+            itemDiv.style.backgroundColor = 'transparent';
+        });
+
+        itemDiv.addEventListener('click', () => {
+            menuItem.action();
+            menu.remove();
+        });
+
+        menu.appendChild(itemDiv);
+    });
+
+    return menu;
+}
+
+/**
+ * 显示右键菜单
+ * @param {Event} e - 鼠标事件
+ * @param {Object|string} item - 数据项
+ * @param {string} sourceUrl - 来源URL
+ */
+function showContextMenu(e, item, sourceUrl) {
+    e.preventDefault();
+    
+    // 移除已存在的菜单
+    const existingMenu = document.querySelector('.context-menu');
+    if (existingMenu) {
+        existingMenu.remove();
+    }
+
+    const menu = createContextMenu(item, sourceUrl);
+    document.body.appendChild(menu);
+
+    // 定位菜单
+    const rect = menu.getBoundingClientRect();
+    let left = e.clientX;
+    let top = e.clientY;
+
+    // 确保菜单不超出视窗
+    if (left + rect.width > window.innerWidth) {
+        left = window.innerWidth - rect.width - 10;
+    }
+    if (top + rect.height > window.innerHeight) {
+        top = window.innerHeight - rect.height - 10;
+    }
+
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+
+    // 点击其他地方时关闭菜单
+    const closeMenu = (event) => {
+        if (!menu.contains(event.target)) {
+            menu.remove();
+            document.removeEventListener('click', closeMenu);
+        }
+    };
+    
+    setTimeout(() => {
+        document.addEventListener('click', closeMenu);
+    }, 0);
+}
+
+/**
+ * 显示右键菜单通知
+ * @param {string} message - 通知消息
+ * @param {string} type - 通知类型 ('success' | 'error')
+ */
+function showContextMenuNotification(message, type = 'success') {
+    // 移除已存在的通知
+    const existingNotification = document.querySelector('.context-menu-notification');
+    if (existingNotification) {
+        existingNotification.remove();
+    }
+
+    const notification = document.createElement('div');
+    notification.className = 'context-menu-notification';
+    
+    const bgColor = type === 'error' ? '#ff4757' : '#2ed573';
+    
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: ${bgColor};
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        z-index: 10002;
+        animation: slideIn 0.3s ease;
+    `;
+    
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    // 3秒后自动消失
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => {
+            notification.remove();
+        }, 300);
+    }, 3000);
+}
+
+// 添加动画样式
+(function addContextMenuStyles() {
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        @keyframes slideOut {
+            from {
+                opacity: 1;
+                transform: translateX(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+        }
+    `;
+    document.head.appendChild(style);
+})();
 
 //console.log('✅ [DEBUG] 深度扫描窗口脚本（统一正则版本）加载完成');

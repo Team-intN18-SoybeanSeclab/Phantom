@@ -222,7 +222,16 @@ class BackgroundSRCMiner {
     }
     
     // 确保离屏文档存在
+    // 🔥 添加锁机制防止并发创建离屏文档
+    _offscreenCreating = false;
+    _offscreenPromise = null;
+    
     async ensureOffscreenDocument() {
+        // 🔥 如果正在创建中，等待创建完成
+        if (this._offscreenCreating && this._offscreenPromise) {
+            return this._offscreenPromise;
+        }
+        
         try {
             // 检查是否已有离屏文档
             const existingContexts = await chrome.runtime.getContexts({
@@ -234,18 +243,32 @@ class BackgroundSRCMiner {
                 return;
             }
             
+            // 🔥 设置锁
+            this._offscreenCreating = true;
+            
             // 创建离屏文档
             //console.log('🔧 创建离屏文档...');
-            await chrome.offscreen.createDocument({
+            this._offscreenPromise = chrome.offscreen.createDocument({
                 url: 'offscreen.html',
                 reasons: ['DOM_SCRAPING'],
                 justification: '需要使用完整的Web API来发送带Cookie的网络请求'
             });
             
+            await this._offscreenPromise;
+            
             //console.log('✅ 离屏文档创建成功');
         } catch (error) {
+            // 🔥 如果是"已存在"错误，忽略它
+            if (error.message && error.message.includes('single offscreen document')) {
+                console.log('🔧 离屏文档已存在（并发创建）');
+                return;
+            }
             console.error('❌ 离屏文档创建失败:', error);
             throw error;
+        } finally {
+            // 🔥 释放锁
+            this._offscreenCreating = false;
+            this._offscreenPromise = null;
         }
     }
     

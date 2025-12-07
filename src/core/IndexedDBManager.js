@@ -99,40 +99,8 @@ class IndexedDBManager {
             const actualPageTitle = pageTitle || document.title || urlObj.hostname;
             const currentTime = new Date().toISOString();
             
-            // 转换普通扫描结果格式，确保每个项目都有sourceUrl字段
-            const transformedResults = {};
-            
-            if (results && typeof results === 'object') {
-                for (const [key, value] of Object.entries(results)) {
-                    if (Array.isArray(value)) {
-                        // 将数组中的每个字符串转换为包含sourceUrl的对象
-                        transformedResults[key] = value.map(item => {
-                            if (typeof item === 'string') {
-                                return {
-                                    value: item,
-                                    sourceUrl: actualSourceUrl,
-                                    extractedAt: currentTime,
-                                    pageTitle: actualPageTitle
-                                };
-                            } else if (typeof item === 'object' && item !== null) {
-                                // 如果已经是对象，确保包含必要字段
-                                return {
-                                    ...item,
-                                    sourceUrl: item.sourceUrl || actualSourceUrl,
-                                    extractedAt: item.extractedAt || currentTime,
-                                    pageTitle: item.pageTitle || actualPageTitle
-                                };
-                            }
-                            return item;
-                        });
-                    } else {
-                        // 非数组数据保持原样
-                        transformedResults[key] = value;
-                    }
-                }
-            } else {
-                transformedResults = results;
-            }
+            // 🔥 使用通用去重方法处理结果
+            const transformedResults = this.dedupeResults(results, actualSourceUrl, currentTime, actualPageTitle);
             
             const data = {
                 id: storageKey,
@@ -388,15 +356,19 @@ class IndexedDBManager {
             // 获取源URL和页面标题 - 修复深度扫描显示"未知"的问题
             const actualSourceUrl = sourceUrl || window.location.href || url;
             const actualPageTitle = pageTitle || document.title || urlObj.hostname;
+            const currentTime = new Date().toISOString();
+            
+            // 🔥 对结果进行去重处理
+            const dedupedResults = this.dedupeResults(results, actualSourceUrl, currentTime, actualPageTitle);
             
             const data = {
                 id: storageKey,
                 domain: urlObj.hostname,
                 url: url,
-                results: results,
+                results: dedupedResults,
                 sourceUrl: actualSourceUrl,  // 添加源URL信息
                 pageTitle: actualPageTitle,  // 添加页面标题信息
-                extractedAt: new Date().toISOString(),  // 添加提取时间
+                extractedAt: currentTime,  // 添加提取时间
                 type: 'deepScan',
                 timestamp: Date.now(),
                 lastSave: Date.now()
@@ -760,6 +732,114 @@ class IndexedDBManager {
             this.db = null;
             console.log('✅ IndexedDB连接已关闭');
         }
+    }
+    
+    /**
+     * 🔥 对结果进行去重处理
+     */
+    dedupeResults(results, sourceUrl, currentTime, pageTitle) {
+        if (!results || typeof results !== 'object') {
+            return results;
+        }
+        
+        const dedupedResults = {};
+        
+        for (const [key, value] of Object.entries(results)) {
+            if (Array.isArray(value)) {
+                // 使用 Set 进行去重
+                const seen = new Set();
+                const deduped = [];
+                
+                for (const item of value) {
+                    let itemValue, itemObj;
+                    
+                    if (typeof item === 'string') {
+                        itemValue = item;
+                        itemObj = {
+                            value: item,
+                            sourceUrl: sourceUrl,
+                            extractedAt: currentTime,
+                            pageTitle: pageTitle
+                        };
+                    } else if (typeof item === 'object' && item !== null) {
+                        itemValue = item.value || JSON.stringify(item);
+                        itemObj = {
+                            ...item,
+                            sourceUrl: item.sourceUrl || sourceUrl,
+                            extractedAt: item.extractedAt || currentTime,
+                            pageTitle: item.pageTitle || pageTitle
+                        };
+                    } else {
+                        continue;
+                    }
+                    
+                    // 去重：只添加未见过的值
+                    if (itemValue && !seen.has(itemValue)) {
+                        // 🔥 过滤无效路径（针对 API 类型）
+                        if ((key === 'absoluteApis' || key === 'relativeApis') && this.isInvalidPath(itemValue)) {
+                            continue;
+                        }
+                        seen.add(itemValue);
+                        deduped.push(itemObj);
+                    }
+                }
+                
+                dedupedResults[key] = deduped;
+            } else {
+                // 非数组数据保持原样
+                dedupedResults[key] = value;
+            }
+        }
+        
+        // 🔥 跨类别去重：从 relativeApis 中移除与 absoluteApis 完全相同的值
+        if (dedupedResults.absoluteApis && dedupedResults.relativeApis) {
+            const absoluteValues = new Set(dedupedResults.absoluteApis.map(item => 
+                typeof item === 'object' ? item.value : item
+            ));
+            dedupedResults.relativeApis = dedupedResults.relativeApis.filter(item => {
+                const value = typeof item === 'object' ? item.value : item;
+                return !absoluteValues.has(value);
+            });
+        }
+        
+        return dedupedResults;
+    }
+    
+    /**
+     * 🔥 检查路径是否无效（用于过滤垃圾数据）
+     */
+    isInvalidPath(path) {
+        if (!path || typeof path !== 'string') return true;
+        
+        // 1) /this._xxx 格式（JS属性访问）
+        if (/\/this\.[_a-zA-Z]/.test(path)) return true;
+        
+        // 2) /_/g 格式（正则表达式标志）
+        if (/\/[_a-zA-Z]+\/[gimsuvy]+$/.test(path)) return true;
+        
+        // 3) 超长随机字符串（超过50个连续字母数字）
+        if (/\/[A-Za-z0-9]{50,}/.test(path)) return true;
+        
+        // 4) 包含下划线开头的属性访问 /xxx._yyy
+        if (/\/[a-zA-Z]+\._[a-zA-Z]/.test(path)) return true;
+        
+        // 5) 纯数字或单字母路径
+        if (/^\/\d+$/.test(path) || /^\/[a-zA-Z]$/.test(path)) return true;
+        
+        // 6) 包含多个连续大写字母（可能是混淆代码）
+        if (/\/[A-Z]{10,}/.test(path)) return true;
+        
+        // 7) 单字母.标识符模式 /i.test /e.offsetHeight
+        if (/\/[A-Za-z]\.[A-Za-z][A-Za-z]*(?:\(|\/|$)/.test(path)) return true;
+        
+        // 8) 路径段过长（单个段超过100字符）
+        const segments = path.split('/');
+        if (segments.some(seg => seg.length > 100)) return true;
+        
+        // 9) /a/b 单字母路径
+        if (/^\/[a-zA-Z]\/[a-zA-Z]$/.test(path)) return true;
+        
+        return false;
     }
 }
 

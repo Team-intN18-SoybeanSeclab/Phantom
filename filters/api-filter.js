@@ -2,8 +2,8 @@ class APIFilter {
     constructor() {
         this.regexCache = this.initRegexCache();
         this.config = this.initConfig();
-        // 初始化域名和手机号过滤器
-        this.domainPhoneFilter = window.domainPhoneFilter || new DomainPhoneFilter();
+        // 初始化域名和手机号过滤器（安全检查，避免 DomainPhoneFilter 未定义的错误）
+        this.domainPhoneFilter = window.domainPhoneFilter || (typeof DomainPhoneFilter !== 'undefined' ? new DomainPhoneFilter() : null);
     }
     
     initRegexCache() {

@@ -46,12 +46,37 @@ class BasicScanner {
             // 方法2: 如果content script没有响应，注入必要的脚本文件
             if (!results) {
                 try {
-                    // 先注入依赖的脚本文件
+                    // 先注入依赖的脚本文件（包括 AST 模块和 Vue 检测模块）
                     await chrome.scripting.executeScript({
                         target: { tabId: tab.id, allFrames: false },
                         files: [
+                            // 基础模块
                             'src/scanner/PatternExtractor.js',
-                            'src/scanner/ContentExtractor.js'
+                            'src/scanner/ContentExtractor.js',
+                            // AST 模块
+                            'libs/acorn.min.js',
+                            'src/scanner/ast/parser.js',
+                            'src/scanner/ast/utils/hash.js',
+                            'src/scanner/ast/utils/context.js',
+                            'src/scanner/ast/visitors/ASTVisitor.js',
+                            'src/scanner/ast/visitors/CredentialVisitor.js',
+                            'src/scanner/ast/visitors/APIEndpointVisitor.js',
+                            'src/scanner/ast/visitors/SensitiveFunctionVisitor.js',
+                            'src/scanner/ast/visitors/ConfigObjectVisitor.js',
+                            'src/scanner/ast/visitors/EncodedStringVisitor.js',
+                            'src/scanner/ast/ASTExtractor.js',
+                            'src/scanner/ast/utils/ResultMerger.js',
+                            'src/scanner/ast/ASTBridge.js',
+                            'src/scanner/ast/index.js',
+                            // Vue 检测模块
+                            'src/scanner/vue/utils/serializer.js',
+                            'src/scanner/vue/utils/pathUtils.js',
+                            'src/scanner/vue/VueFinder.js',
+                            'src/scanner/vue/RouterAnalyzer.js',
+                            'src/scanner/vue/GuardPatcher.js',
+                            'src/scanner/vue/VueDetector.js',
+                            'src/scanner/vue/VueDetectorBridge.js',
+                            'src/scanner/vue/index.js'
                         ]
                     });
                     
@@ -173,9 +198,27 @@ class BasicScanner {
                         window.patternExtractor = new PatternExtractor();
                     }
                     
-                    // 每次扫描都强制重新加载最新配置，确保使用最新设置
-                    //console.log('🔄 BasicScanner强制重新加载最新配置...');
-                    await window.patternExtractor.loadCustomPatterns();
+                    // 🔥 初始化 AST 系统
+                    if (window.astBridge && !window.astBridge.initialized) {
+                        try {
+                            await window.astBridge.init();
+                            console.log('✅ [BasicScanner] AST 系统初始化成功');
+                        } catch (astError) {
+                            console.warn('⚠️ [BasicScanner] AST 初始化失败，将仅使用正则:', astError.message);
+                        }
+                    } else if (typeof window.initASTExtractor === 'function' && !window.astExtractor) {
+                        try {
+                            await window.initASTExtractor();
+                            console.log('✅ [BasicScanner] ASTExtractor 初始化成功');
+                        } catch (astError) {
+                            console.warn('⚠️ [BasicScanner] ASTExtractor 初始化失败:', astError.message);
+                        }
+                    }
+                    
+                    // 🔥 性能优化：只在配置未加载时才加载，避免重复加载
+                    if (!window.patternExtractor.customPatternsLoaded) {
+                        await window.patternExtractor.loadCustomPatterns();
+                    }
                     
                     //console.log('✅ BasicScanner配置检查完成');
                     //console.log('📊 BasicScanner最终可用的正则模式:', Object.keys(window.patternExtractor.patterns));
@@ -191,6 +234,59 @@ class BasicScanner {
                     // 创建ContentExtractor并执行提取
                     const contentExtractor = new ContentExtractor();
                     const results = await contentExtractor.extractSensitiveInfo(window.location.href);
+                    
+                    // 🔥 Vue 检测集成
+                    if (typeof window.VueDetectorBridge !== 'undefined') {
+                        try {
+                            const vueBridge = new window.VueDetectorBridge();
+                            const vueResult = await vueBridge.detect();
+                            
+                            if (vueResult && vueResult.detected) {
+                                console.log('✅ [BasicScanner] Vue 检测成功:', vueResult.framework);
+                                // 合并 Vue 检测结果
+                                results.vueRoutes = vueResult.routes || [];
+                                results.vueDetection = {
+                                    detected: true,
+                                    framework: vueResult.framework,
+                                    routeCount: vueResult.routes?.length || 0,
+                                    sensitiveRoutes: vueResult.sensitiveRoutes || [],
+                                    modifiedRoutes: vueResult.modifiedRoutes || []
+                                };
+                                
+                                // 🔥 增强：从 Vue 路由中提取域名
+                                if (vueResult.routes && vueResult.routes.length > 0) {
+                                    if (!results.domains) {
+                                        results.domains = [];
+                                    }
+                                    const existingDomains = new Set(results.domains.map(d => typeof d === 'object' ? d.value : d));
+                                    
+                                    vueResult.routes.forEach(route => {
+                                        const routePath = route.path || route.fullPath || '';
+                                        // 检查是否是完整 URL
+                                        if (routePath.startsWith('http://') || routePath.startsWith('https://')) {
+                                            const domain = this.extractDomainFromUrl(routePath);
+                                            if (domain && !existingDomains.has(domain)) {
+                                                existingDomains.add(domain);
+                                                results.domains.push({
+                                                    value: domain,
+                                                    sourceUrl: window.location.href,
+                                                    extractedAt: new Date().toISOString(),
+                                                    extractedFrom: 'vueRoutes'
+                                                });
+                                                console.log(`✅ [BasicScanner] 从 Vue 路由提取域名: ${domain}`);
+                                            }
+                                        }
+                                    });
+                                }
+                            } else {
+                                results.vueDetection = { detected: false };
+                            }
+                        } catch (vueError) {
+                            console.warn('⚠️ [BasicScanner] Vue 检测失败:', vueError.message);
+                            results.vueDetection = { detected: false, error: vueError.message };
+                        }
+                    }
+                    
                     //console.log('✅ BasicScanner统一化系统提取完成，结果:', results);
                     //console.log('🌐 [DEBUG] BasicScanner扫描完成 - URL:', window.location.href);
                     return results;
@@ -253,7 +349,10 @@ class BasicScanner {
             gitlabTokens: [],
             webhookUrls: [],
             idCards: [],
-            cryptoUsage: []
+            cryptoUsage: [],
+            // Vue 检测结果
+            vueRoutes: [],
+            vueDetection: { detected: false }
         };
         
         // 注意：这里不能异步获取自定义正则配置，因为这是同步函数
@@ -261,5 +360,59 @@ class BasicScanner {
         //console.log('📦 BasicScanner返回基础空结果结构');
         
         return baseResults;
+    }
+    
+    /**
+     * 🔥 从URL中提取域名
+     * @param {string} url - 完整的URL
+     * @returns {string|null} 提取的域名，如果无法提取则返回null
+     */
+    extractDomainFromUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return null;
+        }
+        
+        try {
+            // 必须以 http:// 或 https:// 开头
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                return null;
+            }
+            
+            // 移除协议前缀
+            let domain = url.replace(/^https?:\/\//, '');
+            
+            // 移除www前缀
+            domain = domain.replace(/^www\./, '');
+            
+            // 移除路径、查询参数、锚点和端口
+            domain = domain.split('/')[0];
+            domain = domain.split('?')[0];
+            domain = domain.split('#')[0];
+            domain = domain.split(':')[0];
+            
+            // 清理并转小写
+            domain = domain.toLowerCase().trim();
+            
+            // 验证域名格式
+            if (!domain || domain.length < 3 || !domain.includes('.')) {
+                return null;
+            }
+            
+            // 检查是否是IP地址（不作为域名返回）
+            if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(domain)) {
+                return null;
+            }
+            
+            // 🔥 过滤掉常见的框架文档域名
+            const blacklist = ['w3.org', 'w3schools.com', 'mozilla.org', 'github.com', 
+                              'stackoverflow.com', 'vuejs.org', 'reactjs.org', 'angular.io'];
+            if (blacklist.some(b => domain.includes(b))) {
+                return null;
+            }
+            
+            return domain;
+        } catch (error) {
+            return null;
+        }
     }
 }

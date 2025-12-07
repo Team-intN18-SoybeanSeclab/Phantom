@@ -201,62 +201,60 @@ class SRCMinerContent {
         if (typeof PatternExtractor !== 'undefined' && typeof ContentExtractor !== 'undefined') {
             //console.log('🔄 Content Script使用统一化提取系统');
             
-            // 每次扫描前直接从chrome.storage读取最新配置，不使用缓存
-            //console.log('📥 Content Script直接从存储读取最新配置...');
-            let latestConfig = null;
-            try {
-                const result = await chrome.storage.local.get(['regexSettings']);
-                if (result.regexSettings) {
-                    latestConfig = result.regexSettings;
-                    //console.log('✅ Content Script成功读取最新配置:', latestConfig);
-                } else {
-                    //console.log('📋 Content Script未找到自定义配置，将使用默认配置');
-                }
-            } catch (error) {
-                console.error('❌ Content Script读取配置失败:', error);
+            // 🔥 初始化 AST 系统（只初始化一次）
+            await this.initASTSystem();
+            
+            // 🔥 性能优化：复用已存在的 PatternExtractor 实例
+            if (!window.patternExtractor) {
+                window.patternExtractor = new PatternExtractor();
             }
             
-            // 每次都创建新的PatternExtractor实例，避免缓存
-            //console.log('🔧 Content Script创建新的PatternExtractor实例...');
-            const patternExtractor = new PatternExtractor();
-            
-            // 如果有最新配置，直接应用到PatternExtractor
-            if (latestConfig) {
-                //console.log('🔧 Content Script直接应用最新配置到PatternExtractor...');
-                await patternExtractor.updatePatterns(latestConfig);
-                //console.log('✅ Content Script配置应用完成');
-            } else {
-                // 没有自定义配置时，确保默认配置已加载
-                await patternExtractor.ensureCustomPatternsLoaded();
+            // 🔥 性能优化：只在配置未加载时才加载配置
+            if (!window.patternExtractor.customPatternsLoaded) {
+                await window.patternExtractor.loadCustomPatterns();
             }
-            
-            // 临时设置到window，供ContentExtractor使用
-            window.patternExtractor = patternExtractor;
-            
-            //console.log('🔧 Content Script当前PatternExtractor配置状态:', {
-            //    customRegexConfig: patternExtractor.customRegexConfig,
-            //    hasAbsoluteApis: !!(latestConfig && latestConfig.absoluteApis),
-            //    hasRelativeApis: !!(latestConfig && latestConfig.relativeApis),
-            //    hasCustomEmails: !!(latestConfig && latestConfig.emails),
-            //    hasCustomPhones: !!(latestConfig && latestConfig.phoneNumbers),
-            //    hasCustomDomains: !!(latestConfig && latestConfig.domains)
-            //});
             
             const contentExtractor = new ContentExtractor();
             const results = await contentExtractor.extractSensitiveInfo(window.location.href);
-            
-            //console.log('✅ Content Script统一化系统提取完成，结果统计:', {
-            //    absoluteApis: results.absoluteApis?.length || 0,
-            //    relativeApis: results.relativeApis?.length || 0,
-            //    domains: results.domains?.length || 0,
-            //    emails: results.emails?.length || 0,
-            //    phoneNumbers: results.phoneNumbers?.length || 0
-            //});
             
             return results;
         } else {
             console.error('❌ Content Script统一化版本：PatternExtractor或ContentExtractor不可用');
             return this.getEmptyResults();
+        }
+    }
+    
+    // 🔥 初始化 AST 系统
+    async initASTSystem() {
+        try {
+            // 检查 AST 模块是否已加载
+            if (!window.acorn) {
+                console.warn('⚠️ [Content] acorn 未加载，AST 功能不可用');
+                return false;
+            }
+            
+            // 优先使用 astBridge
+            if (window.astBridge && !window.astBridge.initialized) {
+                const initResult = await window.astBridge.init();
+                if (initResult && window.astBridge.isAvailable()) {
+                    // console.log('✅ [Content] AST 系统初始化成功');
+                    return true;
+                }
+            } else if (window.astBridge?.initialized) {
+                return true;
+            }
+            
+            // 备选：使用 initASTExtractor
+            if (typeof window.initASTExtractor === 'function' && !window.astExtractor) {
+                await window.initASTExtractor();
+                // console.log('✅ [Content] ASTExtractor 初始化成功');
+                return true;
+            }
+            
+            return false;
+        } catch (error) {
+            console.warn('⚠️ [Content] AST 初始化失败:', error.message);
+            return false;
         }
     }
     

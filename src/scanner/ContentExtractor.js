@@ -75,96 +75,116 @@ class ContentExtractor {
             // 获取存储内容
             const storageContent = this.getStorageContent();
             
-            // 获取Cookie内容
-            //const cookieContent = document.cookie;
+            // 🔥 性能优化：合并所有非脚本内容，一次性处理正则提取
+            // 这样可以避免多次调用 performMultiLayerScan 导致的重复配置加载
+            const combinedNonScriptContent = [pageContent, styleContent, linkContent].filter(c => c && c.length > 0).join('\n');
             
-            // 合并所有内容进行扫描 - 分批处理以提高性能
-            await this.performMultiLayerScan(pageContent, results);
-            await this.performMultiLayerScan(scriptContent, results);
-            await this.performMultiLayerScan(styleContent, results);
-            await this.performMultiLayerScan(linkContent, results);
-            await this.performMultiLayerScan(storageContent, results);
-            //await this.performMultiLayerScan(cookieContent, results);
+            // 🔥 性能优化：只调用两次 performMultiLayerScan
+            // 1. 非脚本内容（不使用 AST）
+            if (combinedNonScriptContent.length > 0) {
+                await this.performMultiLayerScan(combinedNonScriptContent, results, false);
+            }
+            
+            // 2. 脚本内容（使用 AST）- 合并脚本和存储内容
+            const combinedScriptContent = [scriptContent, storageContent].filter(c => c && c.length > 0).join('\n');
+            if (combinedScriptContent.length > 0) {
+                await this.performMultiLayerScan(combinedScriptContent, results, true);
+            }
             
             // 转换Set为Array并过滤 - 修复：包含所有动态创建的键，确保每个项目都有sourceUrl
             const finalResults = {};
             
-            // 处理所有键，包括动态创建的自定义正则键
-            for (const [key, value] of Object.entries(results)) {
-                if (value instanceof Set) {
-                    // 🔥 修复：转换Set时确保每个项目都有完整的源URL信息
-                    finalResults[key] = Array.from(value).filter(item => {
-                        // 过滤掉空值
-                        if (typeof item === 'object' && item !== null) {
-                            return item.value && item.value.length > 0;
-                        } else {
-                            return item && item.length > 0;
-                        }
-                    }).map(item => {
-                        // 确保每个项目都是对象格式并包含源URL信息
-                        if (typeof item === 'object' && item !== null && item.hasOwnProperty('value')) {
-                            return {
-                                value: item.value,
-                                sourceUrl: item.sourceUrl || window.location.href,
-                                extractedAt: item.extractedAt || new Date().toISOString(),
-                                pageTitle: item.pageTitle || document.title || 'Unknown Page'
-                            };
-                        } else {
-                            return {
-                                value: item,
-                                sourceUrl: window.location.href,
-                                extractedAt: new Date().toISOString(),
-                                pageTitle: document.title || 'Unknown Page'
-                            };
-                        }
-                    });
-                } else if (Array.isArray(value)) {
-                    // 🔥 修复：处理数组时确保每个项目都有完整的源URL信息
-                    finalResults[key] = value.filter(item => {
-                        if (typeof item === 'object' && item !== null) {
-                            return item.value && item.value.length > 0;
-                        } else {
-                            return item && item.length > 0;
-                        }
-                    }).map(item => {
-                        if (typeof item === 'object' && item !== null && item.hasOwnProperty('value')) {
-                            return {
-                                value: item.value,
-                                sourceUrl: item.sourceUrl || window.location.href,
-                                extractedAt: item.extractedAt || new Date().toISOString(),
-                                pageTitle: item.pageTitle || document.title || 'Unknown Page'
-                            };
-                        } else {
-                            return {
-                                value: item,
-                                sourceUrl: window.location.href,
-                                extractedAt: new Date().toISOString(),
-                                pageTitle: document.title || 'Unknown Page'
-                            };
-                        }
-                    });
-                } else if (value) {
-                    // 🔥 修复：单个值也要转换为包含源URL信息的对象数组
-                    if (typeof value === 'object' && value !== null && value.hasOwnProperty('value')) {
-                        finalResults[key] = [{
-                            value: value.value,
-                            sourceUrl: value.sourceUrl || window.location.href,
-                            extractedAt: value.extractedAt || new Date().toISOString(),
-                            pageTitle: value.pageTitle || document.title || 'Unknown Page'
-                        }];
+            // 🔥 全局去重：记录所有已添加的值
+            const globalSeenValues = new Set();
+            
+            // 辅助函数：处理并去重数组
+            const processAndDedupe = (items, key) => {
+                const seen = new Set();
+                return items.filter(item => {
+                    const value = typeof item === 'object' ? item.value : item;
+                    if (!value || value.length === 0) return false;
+                    if (seen.has(value)) return false;
+                    seen.add(value);
+                    return true;
+                }).map(item => {
+                    if (typeof item === 'object' && item !== null && item.hasOwnProperty('value')) {
+                        return {
+                            value: item.value,
+                            sourceUrl: item.sourceUrl || window.location.href,
+                            extractedAt: item.extractedAt || new Date().toISOString(),
+                            pageTitle: item.pageTitle || document.title || 'Unknown Page'
+                        };
                     } else {
-                        finalResults[key] = [{
-                            value: value,
+                        return {
+                            value: item,
                             sourceUrl: window.location.href,
                             extractedAt: new Date().toISOString(),
                             pageTitle: document.title || 'Unknown Page'
-                        }];
+                        };
                     }
+                });
+            };
+            
+            // 处理所有键，包括动态创建的自定义正则键
+            for (const [key, value] of Object.entries(results)) {
+                if (value instanceof Set) {
+                    finalResults[key] = processAndDedupe(Array.from(value), key);
+                } else if (Array.isArray(value)) {
+                    finalResults[key] = processAndDedupe(value, key);
+                } else if (value) {
+                    const items = [value];
+                    finalResults[key] = processAndDedupe(items, key);
                 } else {
-                    // 空值保持为空数组
                     finalResults[key] = [];
                 }
             }
+            
+            // 🔥 跨类别去重：从 relativeApis 中移除与 absoluteApis 完全相同的值
+            if (finalResults.absoluteApis && finalResults.relativeApis) {
+                const absoluteValues = new Set(finalResults.absoluteApis.map(item => item.value));
+                finalResults.relativeApis = finalResults.relativeApis.filter(item => {
+                    // 只有完全相同才去重
+                    return !absoluteValues.has(item.value);
+                });
+            }
+            
+            // 🔥 增强：从所有可能包含 URL 的数组中提取域名
+            const urlContainingKeys = [
+                'urls',           // 完整 URL
+                'absoluteApis',   // 绝对路径 API（可能包含完整 URL）
+                'jsFiles',        // JS 文件 URL
+                'cssFiles',       // CSS 文件 URL
+                'images',         // 图片 URL
+                'githubUrls',     // GitHub URL
+                'webhookUrls'     // Webhook URL
+            ];
+            
+            const existingDomains = new Set((finalResults.domains || []).map(d => d.value));
+            if (!finalResults.domains) {
+                finalResults.domains = [];
+            }
+            
+            urlContainingKeys.forEach(key => {
+                if (finalResults[key] && finalResults[key].length > 0) {
+                    finalResults[key].forEach(urlItem => {
+                        const url = urlItem.value || urlItem.fullUrl || urlItem;
+                        if (url && typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
+                            const domain = this.extractDomainFromUrl(url);
+                            if (domain && !existingDomains.has(domain)) {
+                                existingDomains.add(domain);
+                                finalResults.domains.push({
+                                    value: domain,
+                                    sourceUrl: urlItem.sourceUrl || window.location.href,
+                                    extractedAt: new Date().toISOString(),
+                                    pageTitle: document.title || 'Unknown Page',
+                                    extractedFrom: key // 记录来源类型
+                                });
+                                console.log(`✅ [ContentExtractor] 从 ${key} 提取域名: ${domain}`);
+                            }
+                        }
+                    });
+                }
+            });
             
             //console.log('🔍 ContentExtractor最终结果转换完成，包含的键:', Object.keys(finalResults));
             const customKeys = Object.keys(finalResults).filter(key => key.startsWith('custom_'));
@@ -190,8 +210,19 @@ class ContentExtractor {
     // 获取页面内容 - 优化版本
     getPageContent() {
         try {
-            // 获取完整的HTML内容，包括head和body，确保不遗漏任何资源
-            return document.documentElement.outerHTML;
+            // 获取完整的HTML内容，但移除 script 标签内容避免重复提取
+            // 因为脚本内容会在 getAllScripts 中单独处理
+            let html = document.documentElement.outerHTML;
+            // 移除 script 标签内的内容，保留标签本身（用于提取 src 属性）
+            html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, (match) => {
+                // 保留带 src 的 script 标签
+                if (match.includes(' src=') || match.includes(' src =')) {
+                    return match.replace(/>[\s\S]*?<\/script>/i, '></script>');
+                }
+                // 移除内联脚本的内容
+                return match.replace(/>[\s\S]*?<\/script>/i, '></script>');
+            });
+            return html;
         } catch (e) {
             return '';
         }
@@ -292,7 +323,7 @@ class ContentExtractor {
     }
     
     // 分批处理内容扫描 - 优化版本
-    async performMultiLayerScan(content, results) {
+    async performMultiLayerScan(content, results, useAST = false) {
         if (!content || content.length === 0) return;
         
         // 移除内容大小限制，处理完整内容
@@ -304,27 +335,46 @@ class ContentExtractor {
                 //console.log('🔍🔍🔍 ContentExtractor找到PatternExtractor，准备调用extractPatterns方法');
                 //console.log('📊 ContentExtractor处理内容长度:', processContent.length);
                 
-                // 每次都强制重新加载最新配置，确保使用最新设置
-                //console.log('🔄 ContentExtractor强制重新加载最新配置...');
-                await window.patternExtractor.loadCustomPatterns();
+                // 🔥 性能优化：只在配置未加载时才加载，避免重复加载
+                if (!window.patternExtractor.customPatternsLoaded) {
+                    await window.patternExtractor.loadCustomPatterns();
+                }
                 
                 //console.log('📊 ContentExtractor当前可用的正则模式:', Object.keys(window.patternExtractor.patterns));
                 //console.log('🚀🚀🚀 ContentExtractor即将调用PatternExtractor.extractPatterns方法！');
                 
-                const extractedData = await window.patternExtractor.extractPatterns(processContent, window.location.href);
+                let extractedData = await window.patternExtractor.extractPatterns(processContent, window.location.href);
+                
+                // 🔥 AST 增强提取：只在指定时对 JavaScript 内容使用 AST 分析
+                if (useAST) {
+                    extractedData = await this.enhanceWithAST(processContent, extractedData, window.location.href);
+                }
                 
                 //console.log('✅✅✅ ContentExtractor调用PatternExtractor.extractPatterns完成，返回数据:', extractedData);
                 
                 // 将提取的数据合并到results中，包括动态自定义正则结果
                 // 🔥 修复：保持PatternExtractor返回的完整对象结构（包含sourceUrl）
                 if (extractedData) {
+                    // 辅助函数：检查 Set 中是否已存在相同值的对象
+                    const hasValue = (set, value) => {
+                        for (const item of set) {
+                            const itemValue = typeof item === 'object' ? item.value : item;
+                            if (itemValue === value) return true;
+                        }
+                        return false;
+                    };
+                    
                     Object.keys(extractedData).forEach(key => {
                         // 处理预定义的结果键
                         if (results[key] && Array.isArray(extractedData[key])) {
                             extractedData[key].forEach(itemObj => {
+                                const value = typeof itemObj === 'object' ? itemObj.value : itemObj;
+                                
+                                // 🔥 去重：检查是否已存在相同值
+                                if (hasValue(results[key], value)) return;
+                                
                                 // 🔥 修复：确保每个项目都有完整的源URL信息
                                 if (typeof itemObj === 'object' && itemObj !== null && itemObj.hasOwnProperty('value')) {
-                                    // 已经是对象格式，确保包含所有必要字段
                                     results[key].add({
                                         value: itemObj.value,
                                         sourceUrl: itemObj.sourceUrl || window.location.href,
@@ -332,7 +382,6 @@ class ContentExtractor {
                                         pageTitle: itemObj.pageTitle || document.title || 'Unknown Page'
                                     });
                                 } else {
-                                    // 兼容旧格式：如果是字符串，转换为对象格式
                                     results[key].add({
                                         value: itemObj,
                                         sourceUrl: window.location.href,
@@ -346,12 +395,14 @@ class ContentExtractor {
                         else if (key.startsWith('custom_') && Array.isArray(extractedData[key])) {
                             if (!results[key]) {
                                 results[key] = new Set();
-                                //console.log(`📦 ContentExtractor为自定义正则 ${key} 创建结果集合`);
                             }
                             extractedData[key].forEach(itemObj => {
-                                // 🔥 修复：确保每个自定义正则项目都有完整的源URL信息
+                                const value = typeof itemObj === 'object' ? itemObj.value : itemObj;
+                                
+                                // 🔥 去重：检查是否已存在相同值
+                                if (hasValue(results[key], value)) return;
+                                
                                 if (typeof itemObj === 'object' && itemObj !== null && itemObj.hasOwnProperty('value')) {
-                                    // 已经是对象格式，确保包含所有必要字段
                                     results[key].add({
                                         value: itemObj.value,
                                         sourceUrl: itemObj.sourceUrl || window.location.href,
@@ -359,7 +410,6 @@ class ContentExtractor {
                                         pageTitle: itemObj.pageTitle || document.title || 'Unknown Page'
                                     });
                                 } else {
-                                    // 兼容旧格式：如果是字符串，转换为对象格式
                                     results[key].add({
                                         value: itemObj,
                                         sourceUrl: window.location.href,
@@ -368,7 +418,6 @@ class ContentExtractor {
                                     });
                                 }
                             });
-                            //console.log(`✅ ContentExtractor自定义正则 ${key} 添加了 ${extractedData[key].length} 个结果`);
                         }
                     });
                     
@@ -387,6 +436,232 @@ class ContentExtractor {
             }
         } else {
             console.warn('⚠️ ContentExtractor统一化版本：PatternExtractor未找到或extractPatterns方法不存在，跳过提取');
+        }
+    }
+    
+    // 🔥 AST 增强提取方法
+    async enhanceWithAST(content, regexResults, sourceUrl) {
+        // 检查 AST 系统是否可用
+        if (!window.astBridge) {
+            return regexResults;
+        }
+        
+        // 确保 AST 系统已初始化
+        if (!window.astBridge.initialized) {
+            try {
+                await window.astBridge.init();
+            } catch (e) {
+                console.warn('⚠️ [ContentExtractor] AST 初始化失败:', e.message);
+                return regexResults;
+            }
+        }
+        
+        if (!window.astBridge.isAvailable()) {
+            return regexResults;
+        }
+        
+        // 检查内容是否可能是 JavaScript
+        const isJsContent = this.isJavaScriptContent(content);
+        
+        // 🔥 性能优化：只对明确的 JS 内容进行 AST 解析
+        // 移除对非 JS 内容的尝试解析，避免无效的解析开销
+        if (!isJsContent) {
+            return regexResults;
+        }
+        
+        // 🔥 性能优化：限制 AST 解析的内容大小为 200KB
+        if (content.length > 200000) {
+            // console.log('⚠️ [AST] 内容过大，跳过 AST 解析:', content.length);
+            return regexResults;
+        }
+        
+        try {
+            // console.log('🔍 [AST] ContentExtractor 尝试 AST 提取...');
+            
+            const astResult = window.astBridge.extract(content, sourceUrl);
+            
+            if (astResult.success && astResult.detections && astResult.detections.length > 0) {
+                console.log('✅ [AST] ContentExtractor AST 提取成功，检测到', astResult.detections.length, '个敏感信息');
+                
+                // 合并 AST 结果到正则结果
+                return this.mergeASTResults(regexResults, astResult.detections, sourceUrl);
+            }
+        } catch (error) {
+            // 对于非 JS 内容的解析失败，静默处理
+            if (isJsContent) {
+                console.warn('⚠️ [AST] ContentExtractor AST 提取失败:', error.message);
+            }
+        }
+        
+        return regexResults;
+    }
+    
+    // 检查内容是否可能是 JavaScript
+    // 🔥 性能优化：只检查内容的前 5000 个字符
+    isJavaScriptContent(content) {
+        if (!content || typeof content !== 'string') return false;
+        
+        // 🔥 性能优化：只检查前 5000 个字符，避免对大内容进行全文搜索
+        const sampleContent = content.length > 5000 ? content.substring(0, 5000) : content;
+        const trimmedContent = sampleContent.trim();
+        
+        // 检查是否以常见 JS 模式开头（快速检查）
+        if (trimmedContent.startsWith('(function') ||
+            trimmedContent.startsWith('function') ||
+            trimmedContent.startsWith('!function') ||
+            trimmedContent.startsWith('var ') ||
+            trimmedContent.startsWith('const ') ||
+            trimmedContent.startsWith('let ') ||
+            trimmedContent.startsWith('"use strict"') ||
+            trimmedContent.startsWith("'use strict'")) {
+            return true;
+        }
+        
+        // 检查常见的 JavaScript 特征
+        const jsIndicators = [
+            'function ', 'const ', 'let ', 'var ',
+            '=>', 'async ', 'await ', 'class ',
+            'import ', 'export ', 'require(',
+            '.then(', '.catch(', 'Promise',
+            'document.', 'window.', 'console.'
+        ];
+        
+        // 检查是否包含多个 JS 特征
+        let indicatorCount = 0;
+        for (const indicator of jsIndicators) {
+            if (sampleContent.includes(indicator)) {
+                indicatorCount++;
+                if (indicatorCount >= 3) return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    // 合并 AST 提取结果到正则结果
+    mergeASTResults(regexResults, astDetections, sourceUrl) {
+        const merged = { ...regexResults };
+        
+        // 🔥 收集所有已存在的值，用于跨类别去重
+        const allExistingValues = new Set();
+        Object.values(merged).forEach(arr => {
+            if (Array.isArray(arr)) {
+                arr.forEach(item => {
+                    const v = typeof item === 'object' ? item.value : item;
+                    if (v) allExistingValues.add(v);
+                });
+            }
+        });
+        
+        for (const detection of astDetections) {
+            // 根据检测类型和值确定结果键
+            let resultKey = 'credentials';
+            
+            if (detection.type === 'api_endpoint') {
+                const value = detection.value || '';
+                // 判断是绝对路径还是相对路径
+                if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('//')) {
+                    resultKey = 'absoluteApis';
+                } else if (value.startsWith('/')) {
+                    resultKey = 'relativeApis';
+                } else {
+                    resultKey = 'absoluteApis';
+                }
+            } else if (detection.type === 'credential') {
+                resultKey = 'credentials';
+            } else if (detection.type === 'sensitive_function') {
+                resultKey = 'credentials';
+            } else if (detection.type === 'config_object') {
+                resultKey = 'credentials';
+            } else if (detection.type === 'encoded_string') {
+                resultKey = 'credentials';
+            }
+            
+            if (!merged[resultKey]) {
+                merged[resultKey] = [];
+            }
+            
+            const value = detection.value;
+            
+            // 🔥 跨类别去重：检查值是否已在任何类别中存在
+            if (!value || allExistingValues.has(value)) {
+                continue;
+            }
+            
+            // 检查是否已存在于当前类别
+            const exists = merged[resultKey].some(item => {
+                const itemValue = typeof item === 'object' ? item.value : item;
+                return itemValue === value;
+            });
+            
+            if (!exists) {
+                merged[resultKey].push({
+                    value: value,
+                    sourceUrl: sourceUrl,
+                    extractedAt: new Date().toISOString(),
+                    pageTitle: document.title || 'Unknown Page',
+                    confidence: detection.confidence || 0.8,
+                    context: detection.context,
+                    source: 'ast'
+                });
+                allExistingValues.add(value);
+            }
+        }
+        
+        return merged;
+    }
+    
+    /**
+     * 🔥 从URL中提取域名
+     * @param {string} url - 完整的URL
+     * @returns {string|null} 提取的域名，如果无法提取则返回null
+     */
+    extractDomainFromUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return null;
+        }
+        
+        try {
+            // 必须以 http:// 或 https:// 开头
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                return null;
+            }
+            
+            // 移除协议前缀
+            let domain = url.replace(/^https?:\/\//, '');
+            
+            // 移除www前缀
+            domain = domain.replace(/^www\./, '');
+            
+            // 移除路径、查询参数、锚点和端口
+            domain = domain.split('/')[0];
+            domain = domain.split('?')[0];
+            domain = domain.split('#')[0];
+            domain = domain.split(':')[0];
+            
+            // 清理并转小写
+            domain = domain.toLowerCase().trim();
+            
+            // 验证域名格式
+            if (!domain || domain.length < 3 || !domain.includes('.')) {
+                return null;
+            }
+            
+            // 检查是否是IP地址（不作为域名返回）
+            if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(domain)) {
+                return null;
+            }
+            
+            // 🔥 过滤掉常见的框架文档域名
+            const blacklist = ['w3.org', 'w3schools.com', 'mozilla.org', 'github.com', 
+                              'stackoverflow.com', 'vuejs.org', 'reactjs.org', 'angular.io'];
+            if (blacklist.some(b => domain.includes(b))) {
+                return null;
+            }
+            
+            return domain;
+        } catch (error) {
+            return null;
         }
     }
     

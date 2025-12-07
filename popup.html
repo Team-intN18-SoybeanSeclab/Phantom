@@ -1518,6 +1518,47 @@
                         </div>
                     </div>
 
+                    <!-- Vue 检测设置 -->
+                    <div class="api-test-section">
+                        <div class="config-title">Vue 检测设置</div>
+                        <div class="config-options" style="flex-direction: column; gap: 12px; align-items: flex-start;">
+                            <label class="config-option" style="width: 100%; justify-content: space-between;">
+                                <span style="display: flex; align-items: center; gap: 8px;">
+                                    <span>启用 Vue 检测</span>
+                                    <small>(自动检测 Vue 框架和路由)</small>
+                                </span>
+                                <input type="checkbox" id="vueDetectionEnabled" checked style="margin-left: auto;">
+                            </label>
+                            <label class="config-option" style="width: 100%; justify-content: space-between;">
+                                <span style="display: flex; align-items: center; gap: 8px;">
+                                    <span>清除路由守卫</span>
+                                    <small>(绕过 beforeEach 等导航守卫)</small>
+                                </span>
+                                <input type="checkbox" id="vueGuardPatch" checked style="margin-left: auto;">
+                            </label>
+                            <label class="config-option" style="width: 100%; justify-content: space-between;">
+                                <span style="display: flex; align-items: center; gap: 8px;">
+                                    <span>修改鉴权字段</span>
+                                    <small>(将 meta.auth 等字段设为 false)</small>
+                                </span>
+                                <input type="checkbox" id="vueAuthPatch" checked style="margin-left: auto;">
+                            </label>
+                            <div class="config-option" style="width: 100%; justify-content: space-between;">
+                                <span style="display: flex; align-items: center; gap: 8px;">
+                                    <span>检测超时</span>
+                                    <small>(毫秒)</small>
+                                </span>
+                                <input type="number" id="vueDetectionTimeout" value="3000" min="1000" max="10000" step="500" style="width: 80px; padding: 4px 8px; background: rgba(0, 0, 0, 0.5); border: 1px solid #444; border-radius: 4px; color: #fff; font-size: 12px;">
+                            </div>
+                        </div>
+                        <div class="headers-actions" style="margin-top: 10px;">
+                            <button id="saveVueSettingsBtn" class="action-button">
+                                <span class="text">保存 Vue 设置</span>
+                                <span class="shine"></span>
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- 请求头设置 -->
                     <div class="api-test-section">
                         <div class="config-title">请求头设置</div>
@@ -1929,6 +1970,23 @@
     <script src="src/utils/SettingsManager.js"></script>
     <script src="src/core/jshook-presets.js"></script>
     <script src="src/core/JSInjector.js"></script>
+    
+    <!-- AST 敏感信息提取模块 -->
+    <script src="libs/acorn.min.js"></script>
+    <script src="src/scanner/ast/parser.js"></script>
+    <script src="src/scanner/ast/utils/hash.js"></script>
+    <script src="src/scanner/ast/utils/context.js"></script>
+    <script src="src/scanner/ast/visitors/ASTVisitor.js"></script>
+    <script src="src/scanner/ast/visitors/CredentialVisitor.js"></script>
+    <script src="src/scanner/ast/visitors/APIEndpointVisitor.js"></script>
+    <script src="src/scanner/ast/visitors/SensitiveFunctionVisitor.js"></script>
+    <script src="src/scanner/ast/visitors/ConfigObjectVisitor.js"></script>
+    <script src="src/scanner/ast/visitors/EncodedStringVisitor.js"></script>
+    <script src="src/scanner/ast/ASTExtractor.js"></script>
+    <script src="src/scanner/ast/utils/ResultMerger.js"></script>
+    <script src="src/scanner/ast/ASTBridge.js"></script>
+    <script src="src/scanner/ast/index.js"></script>
+    
     <script src="src/main.js"></script>
 </body>
 </html>

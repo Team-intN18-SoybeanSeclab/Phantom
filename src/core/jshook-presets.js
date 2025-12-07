@@ -382,7 +382,7 @@ const JSHookPresets = {
             
             {
                 name: 'Clear_vue_Navigation_Guards',
-                description: '去除vue路由守卫，不过我暂时没有实现提取vue信息的功能，可以使用扩展VueCrack，此脚本来源https://github.com/0xsdeo/Hook_JS/blob/main/vue/Clear_vue_Navigation_Guards.js',
+                description: '去除vue路由守卫，此脚本来源https://github.com/0xsdeo/Hook_JS/blob/main/vue/Clear_vue_Navigation_Guards.js',
                 code: `(function () {
     'use strict';
 

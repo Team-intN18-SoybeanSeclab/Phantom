@@ -355,6 +355,11 @@
                         <ul class="result-list" id="vueFilesList"></ul>
                     </div>
 
+                    <div class="result-category" id="vueRoutesResult" style="display: none;">
+                        <h3>🛤️ Vue路由 (<span id="vueRoutesCount">0</span>)</h3>
+                        <ul class="result-list" id="vueRoutesList"></ul>
+                    </div>
+
                     <div class="result-category" id="emailsResult" style="display: none;">
                         <h3>📧 邮箱地址 (<span id="emailsCount">0</span>)</h3>
                         <ul class="result-list" id="emailsList"></ul>
@@ -550,83 +555,39 @@
         .export-option .desc { font-size: 12px; opacity: 0.8; color: #fff; margin-left: auto; }
     </style>
 
-    <!-- 脚本依赖保持不变 -->
+    <!-- 脚本依赖 -->
     <script src="src/core/IndexedDBManager.js"></script>
     <script src="filters/id-card-filter.js"></script>
     <script src="src/utils/SettingsManager.js"></script>
     <script src="src/scanner/PatternExtractor.js"></script>
+    
+    <!-- Vue 检测模块 -->
+    <script src="src/scanner/vue/utils/serializer.js"></script>
+    <script src="src/scanner/vue/utils/pathUtils.js"></script>
+    <script src="src/scanner/vue/VueFinder.js"></script>
+    <script src="src/scanner/vue/RouterAnalyzer.js"></script>
+    <script src="src/scanner/vue/GuardPatcher.js"></script>
+    <script src="src/scanner/vue/VueDetector.js"></script>
+    <script src="src/scanner/vue/VueDetectorBridge.js"></script>
+    <script src="src/scanner/vue/index.js"></script>
+    
+    <!-- AST 敏感信息提取模块 -->
+    <script src="libs/acorn.min.js"></script>
+    <script src="src/scanner/ast/parser.js"></script>
+    <script src="src/scanner/ast/utils/hash.js"></script>
+    <script src="src/scanner/ast/utils/context.js"></script>
+    <script src="src/scanner/ast/visitors/ASTVisitor.js"></script>
+    <script src="src/scanner/ast/visitors/CredentialVisitor.js"></script>
+    <script src="src/scanner/ast/visitors/APIEndpointVisitor.js"></script>
+    <script src="src/scanner/ast/visitors/SensitiveFunctionVisitor.js"></script>
+    <script src="src/scanner/ast/visitors/ConfigObjectVisitor.js"></script>
+    <script src="src/scanner/ast/visitors/EncodedStringVisitor.js"></script>
+    <script src="src/scanner/ast/ASTExtractor.js"></script>
+    <script src="src/scanner/ast/utils/ResultMerger.js"></script>
+    <script src="src/scanner/ast/ASTBridge.js"></script>
+    <script src="src/scanner/ast/index.js"></script>
+    
     <script src="src/scanner/deep-scan-window-script.js"></script>
 </body>
-
-</html>
-
-
-    </style>
-
-    <!-- 脚本依赖保持不变 -->
-    <script src="filters/id-card-filter.js"></script>
-    <script src="src/utils/SettingsManager.js"></script>
-    <script src="src/scanner/PatternExtractor.js"></script>
-    <script src="src/scanner/deep-scan-window-script.js"></script>
-</body>
-
-</html>
-
-</div>
-
-    <style>
-        /* 弹窗样式（保留原有交互） */
-        .modal {
-            position: fixed;
-            z-index: 10000;
-            left: 0; top: 0;
-            width: 100%; height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            display: flex; justify-content: center; align-items: center;
-        }
-        .modal-content {
-            background: linear-gradient(135deg, #1f6feb 0%, #0ea5e9 100%);
-            border-radius: 15px;
-            padding: 0;
-            width: 90%; max-width: 500px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-            animation: modalSlideIn 0.3s ease;
-        }
-        @keyframes modalSlideIn {
-            from { opacity: 0; transform: translateY(-50px) scale(0.9); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        .modal-header {
-            padding: 20px 25px 15px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.25);
-            display: flex; justify-content: space-between; align-items: center;
-        }
-        .modal-header h3 { margin: 0; color: #fff; font-size: 1.3em; }
-        .close {
-            color: #fff; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1;
-            opacity: 0.7; transition: opacity 0.2s;
-        }
-        .close:hover { opacity: 1; }
-        .modal-body { padding: 25px; }
-        .modal-body p { margin: 0 0 20px 0; color: #fff; opacity: 0.9; }
-        .export-options { display: flex; flex-direction: column; gap: 15px; }
-        .export-option {
-            display: flex; align-items: center; gap: 15px;
-            padding: 15px 20px; text-align: left; border-radius: 10px; transition: all 0.3s ease;
-            background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.25);
-        }
-        .export-option:hover { background: rgba(255, 255, 255, 0.22); transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3); }
-        .export-option .icon { font-size: 24px; min-width: 30px; }
-        .export-option .text { font-weight: 600; font-size: 16px; color: #fff; }
-        .export-option .desc { font-size: 12px; opacity: 0.8; color: #fff; margin-left: auto; }
-    </style>
-
-    <!-- 脚本依赖保持不变 -->
-    <script src="filters/id-card-filter.js"></script>
-    <script src="src/utils/SettingsManager.js"></script>
-    <script src="src/scanner/PatternExtractor.js"></script>
-    <script src="src/scanner/deep-scan-window-script.js"></script>
-</body>
-
 </html>
 

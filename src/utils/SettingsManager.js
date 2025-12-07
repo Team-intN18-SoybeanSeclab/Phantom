@@ -201,6 +201,9 @@ class SettingsManager {
         // 域名扫描设置
         document.getElementById('allowSubdomains')?.addEventListener('change', () => this.saveDomainScanSettings());
         document.getElementById('allowAllDomains')?.addEventListener('change', () => this.saveDomainScanSettings());
+        
+        // Vue 检测设置
+        document.getElementById('saveVueSettingsBtn')?.addEventListener('click', () => this.saveVueDetectorSettings());
     }
 
     /**
@@ -292,8 +295,71 @@ class SettingsManager {
                 allowAllDomainsEl.checked = domainScanSettings.allowAllDomains;
             }
             
+            // 加载 Vue 检测设置
+            await this.loadVueDetectorSettings();
+            
         } catch (error) {
             console.error('加载设置失败:', error);
+        }
+    }
+
+    /**
+     * 加载 Vue 检测设置
+     */
+    async loadVueDetectorSettings() {
+        try {
+            const result = await chrome.storage.local.get(['vueDetectorSettings']);
+            const vueSettings = result.vueDetectorSettings || {
+                enabled: true,
+                enableGuardPatch: true,
+                enableAuthPatch: true,
+                timeout: 3000
+            };
+            
+            const enabledEl = document.getElementById('vueDetectionEnabled');
+            const guardPatchEl = document.getElementById('vueGuardPatch');
+            const authPatchEl = document.getElementById('vueAuthPatch');
+            const timeoutEl = document.getElementById('vueDetectionTimeout');
+            
+            if (enabledEl) enabledEl.checked = vueSettings.enabled !== false;
+            if (guardPatchEl) guardPatchEl.checked = vueSettings.enableGuardPatch !== false;
+            if (authPatchEl) authPatchEl.checked = vueSettings.enableAuthPatch !== false;
+            if (timeoutEl) timeoutEl.value = vueSettings.timeout || 3000;
+            
+        } catch (error) {
+            console.error('加载 Vue 检测设置失败:', error);
+        }
+    }
+
+    /**
+     * 保存 Vue 检测设置
+     */
+    async saveVueDetectorSettings() {
+        try {
+            const enabledEl = document.getElementById('vueDetectionEnabled');
+            const guardPatchEl = document.getElementById('vueGuardPatch');
+            const authPatchEl = document.getElementById('vueAuthPatch');
+            const timeoutEl = document.getElementById('vueDetectionTimeout');
+            
+            const vueSettings = {
+                enabled: enabledEl ? enabledEl.checked : true,
+                enableGuardPatch: guardPatchEl ? guardPatchEl.checked : true,
+                enableAuthPatch: authPatchEl ? authPatchEl.checked : true,
+                timeout: timeoutEl ? parseInt(timeoutEl.value) || 3000 : 3000
+            };
+            
+            await chrome.storage.local.set({ vueDetectorSettings: vueSettings });
+            
+            this.showMessage('Vue 检测设置已保存！', 'success');
+            
+            // 触发事件通知其他模块
+            window.dispatchEvent(new CustomEvent('vueDetectorSettingsUpdated', { 
+                detail: vueSettings 
+            }));
+            
+        } catch (error) {
+            console.error('保存 Vue 检测设置失败:', error);
+            this.showMessage('保存设置失败: ' + error.message, 'error');
         }
     }
 

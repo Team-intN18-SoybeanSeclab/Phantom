@@ -1,9 +1,22 @@
 /**
  * 模式提取器 - 只使用设置界面配置的正则表达式
  * 统一化版本 - 去除所有内置正则和降级机制
+ * 性能优化版本 - 添加分块处理和缓存机制
  */
 class PatternExtractor {
     constructor() {
+        // === 性能优化配置 ===
+        this.performanceConfig = {
+            maxMatchesPerPattern: 5000,     // 每个正则最大匹配数
+            chunkSize: 100000,              // 分块处理大小（字符）
+            enableChunking: true,           // 是否启用分块处理
+            cacheEnabled: true,             // 是否启用缓存
+            maxCacheSize: 50                // 最大缓存条目数
+        };
+        
+        // 结果缓存
+        this._resultCache = new Map();
+        
         // 静态文件扩展名列表 - 用于过滤绝对路径和相对路径API
         this.staticFileExtensions = [
             // 图片文件
@@ -22,6 +35,7 @@ class PatternExtractor {
 
         // 域名黑名单：不会展示以下域名
         this.DOMAIN_BLACKLIST = [
+            // 代码中的属性访问模式
             'el.datepicker.today',
             'obj.style.top',
             'window.top',
@@ -31,7 +45,116 @@ class PatternExtractor {
             'page.info',
             'res.info',
             'item.info',
-            'vuejs.org'
+            // Vue/JS 组件相关
+            'refs.timepicker.date',
+            'refs.mintimepicker.date',
+            'refs.maxtimepicker.date',
+            'refs.input.click',
+            'refs.datepicker.date',
+            'refs.picker.date',
+            'refs.dialog.show',
+            'refs.modal.show',
+            'refs.form.submit',
+            'refs.table.data',
+            // 常见框架文档域名（通常不需要）
+            'vuejs.org',
+            'www.w3.org',
+            'reactjs.org',
+            'angular.io',
+            'nodejs.org',
+            'npmjs.com',
+            'github.com',
+            'stackoverflow.com',
+            'developer.mozilla.org'
+        ];
+        
+        // 🔥 新增：域名垃圾模式过滤（过滤代码中的变量访问等非真实域名）
+        this.DOMAIN_GARBAGE_PATTERNS = [
+            // === JS 对象属性访问模式 ===
+            /^this\./i,                       // this.xxx
+            /^props\./i,                      // props.xxx
+            /^value\./i,                      // value.xxx
+            /^refs\./i,                       // refs.xxx (Vue refs)
+            /^state\./i,                      // state.xxx
+            /^data\./i,                       // data.xxx
+            /^options\./i,                    // options.xxx
+            /^config\./i,                     // config.xxx
+            /^params\./i,                     // params.xxx
+            /^query\./i,                      // query.xxx
+            /^result\./i,                     // result.xxx
+            /^response\./i,                   // response.xxx
+            /^request\./i,                    // request.xxx
+            /^event\./i,                      // event.xxx
+            /^target\./i,                     // target.xxx
+            /^currentTarget\./i,              // currentTarget.xxx
+            /^style\./i,                      // style.xxx
+            /^window\./i,                     // window.xxx
+            /^document\./i,                   // document.xxx
+            /^console\./i,                    // console.xxx
+            /^Math\./i,                       // Math.xxx
+            /^Object\./i,                     // Object.xxx
+            /^Array\./i,                      // Array.xxx
+            /^String\./i,                     // String.xxx
+            /^Number\./i,                     // Number.xxx
+            /^JSON\./i,                       // JSON.xxx
+            /^Date\./i,                       // Date.xxx
+            /^Promise\./i,                    // Promise.xxx
+            /^Error\./i,                      // Error.xxx
+            /^\$\./i,                         // $.xxx (jQuery)
+            /^_\./i,                          // _.xxx (lodash)
+            /^\w+Element\./i,                 // parentElement.xxx, childElement.xxx
+            
+            // === 多级属性访问（如 refs.timepicker.date）===
+            // 注意：不再使用 /^[a-z]+\.[a-z]+\.[a-z]+/i，因为它会误杀三级域名如 www.example.com
+            /refs\.[a-z]+\./i,                // refs.xxx.yyy
+            /\$refs\./i,                      // $refs.xxx
+            
+            // === 代码变量模式 ===
+            /^[A-Z][a-z]\./i,                 // Tr.info 等大写开头单词
+            /^[a-z]{1,2}\.[a-z]{1,2}$/i,      // a.b, ab.cd 等极短的变量访问
+            /^[a-z]\.[a-z]+\(/i,              // a.test(, e.exec( 等方法调用
+            
+            // === CSS/样式相关 ===
+            /^clientY-/i,                     // clientY-xxx
+            /^clientX-/i,                     // clientX-xxx
+            /^offset[A-Z]/i,                  // offsetWidth, offsetHeight
+            /^scroll[A-Z]/i,                  // scrollTop, scrollLeft
+            
+            // === 明显的代码片段 ===
+            /\.(test|exec|match|replace|split|join|map|filter|reduce|forEach)\s*\(/i,  // 方法调用
+            /\.(length|value|name|type|id|class|style|data)\s*[=;,)]/i,  // 属性访问
+        ];
+        
+        // 🔥 常见短域名白名单（这些短域名是真实的）
+        this.SHORT_DOMAIN_WHITELIST = new Set([
+            't.co', 'j.mp', 'g.co', 'fb.me', 'bit.ly', 'goo.gl', 'ow.ly', 'is.gd',
+            'v.gd', 'tr.im', 'cli.gs', 'tinyurl.com', 'tiny.cc', 'lnkd.in', 'db.tt',
+            'qr.ae', 'adf.ly', 'po.st', 'bc.vc', 'su.pr', 'twurl.nl', 'u.nu',
+            'x.co', 'me.com', 'qq.com', 'jd.com', 'so.com', 'cn.com', 'hk.com',
+            'tw.com', 'jp.com', 'kr.com', 'ru.com', 'de.com', 'uk.com', 'eu.com',
+            'us.com', 'za.com', 'br.com', 'ar.com', 'mx.com', 'co.uk', 'co.jp',
+            'co.kr', 'co.nz', 'co.za', 'co.in', 'ne.jp', 'or.jp', 'ac.uk', 'gov.uk',
+            'org.uk', 'net.cn', 'org.cn', 'gov.cn', 'edu.cn', 'ac.cn', 'mil.cn'
+        ]);
+        
+        // 🔥 新增：绝对路径垃圾模式过滤
+        this.ABSOLUTE_PATH_GARBAGE_PATTERNS = [
+            /^\/gi\.test$/i,                  // /gi.test
+            /^\/gi$/i,                        // /gi
+            /^\/\d+-[A-Za-z]-[A-Za-z]/i,      // /2-U-j-de-R.mainAxis 等
+            /^\/\d+\.\d+$/,                   // /1.055
+            /^\/[a-z]\.test$/i,               // /i.test
+            /^\/[a-z]\.exec$/i,               // /i.exec
+            /^\/Math\./i,                     // /Math.xxx
+            /^\/[a-z]\.[a-z]+$/i,             // /a.b
+            /^\/--/,                          // /--xxx
+            /^\/\.\//,                        // /./ 
+            /^\/`/,                           // /`xxx
+            /`\/$/,                           // xxx`/
+            /\.mainAxis$/i,                   // xxx.mainAxis
+            /\.crossAxis$/i,                  // xxx.crossAxis
+            /^\/[a-z]{1,2}$/i,                // /a, /ab 等单字母路径
+            /\.[A-Z][a-z]+[A-Z]/,             // 驼峰命名的属性访问
         ];
 
         // 内容类型过滤列表 - 用于静态路径和相对路径过滤
@@ -111,6 +234,7 @@ class PatternExtractor {
             '/d.count',
             '/Math.LN10',
             '/2-z-Y-Ie-A.mainAxis',
+            '/2-U-j-de-R.mainAxis',
             '/top/.test',
             '/Y/.test',
             '.test(',
@@ -120,6 +244,13 @@ class PatternExtractor {
             '/Math.PI',
             '/t.length',
             '/c.async',
+            // 🔥 新增：更多垃圾路径模式
+            '/gi.test',
+            '/1.055',
+            '.mainAxis',
+            '.crossAxis',
+            '.offsetWidth',
+            '.offsetHeight',
             '/./.exec',
             '/__/g',
             '/s/g',
@@ -292,6 +423,156 @@ class PatternExtractor {
         
         return isBlacklisted;
     }
+    
+    /**
+     * 🔥 检查域名是否为垃圾域名（代码变量访问等）
+     * @param {string} domain - 要检查的域名
+     * @returns {boolean} 是否为垃圾域名
+     */
+    isGarbageDomain(domain) {
+        if (!domain || typeof domain !== 'string') {
+            return false;
+        }
+        
+        const cleanDomain = domain.trim().toLowerCase();
+        
+        // 🔥 首先检查短域名白名单（这些是真实的短域名）
+        if (this.SHORT_DOMAIN_WHITELIST && this.SHORT_DOMAIN_WHITELIST.has(cleanDomain)) {
+            return false; // 白名单中的域名不是垃圾域名
+        }
+        
+        // 🔥 检查是否包含多个点号（可能是多级属性访问如 refs.timepicker.date）
+        const dotCount = (cleanDomain.match(/\./g) || []).length;
+        if (dotCount >= 3) {
+            // 超过3个点的很可能是代码中的属性访问链
+            return true;
+        }
+        
+        // 检查是否匹配垃圾模式
+        for (const pattern of this.DOMAIN_GARBAGE_PATTERNS) {
+            if (pattern.test(cleanDomain)) {
+                return true;
+            }
+        }
+        
+        // 🔥 检查是否包含常见的代码关键字
+        const codeKeywords = ['refs', 'props', 'state', 'data', 'config', 'options', 
+                              'params', 'query', 'result', 'response', 'request',
+                              'event', 'target', 'style', 'class', 'element',
+                              'picker', 'input', 'button', 'form', 'modal', 'dialog'];
+        for (const keyword of codeKeywords) {
+            // 如果域名中包含这些关键字且后面跟着点号，很可能是代码
+            if (cleanDomain.includes(keyword + '.') || cleanDomain.includes('.' + keyword + '.')) {
+                return true;
+            }
+        }
+        
+        // 🔥 检查是否以常见的代码后缀结尾（排除真实TLD如 .click, .date 等）
+        // 注意：.click, .date, .name, .style, .data 等是真实的 gTLD，不应该被过滤
+        const codeSuffixes = ['.input', '.value', '.length', '.type', 
+                              '.id', '.class', '.text',
+                              '.html', '.json', '.xml', '.form', '.submit', '.reset',
+                              '.focus', '.blur', '.change', '.select', '.load', '.error',
+                              '.test', '.exec', '.match', '.replace', '.split'];
+        // 只有当域名看起来像代码时才过滤（包含多个点或以代码关键字开头）
+        if (dotCount >= 2) {
+            for (const suffix of codeSuffixes) {
+                if (cleanDomain.endsWith(suffix)) {
+                    return true;
+                }
+            }
+        }
+        
+        // 🔥 放宽短域名限制：只过滤明显不是域名的情况
+        // 不再简单地按长度过滤，而是检查是否符合域名格式
+        const parts = cleanDomain.split('.');
+        if (parts.length === 2) {
+            const [name, tld] = parts;
+            // 如果名称部分只有1个字符且TLD不是常见的，可能是代码
+            if (name.length === 1 && !['co', 'me', 'io', 'tv', 'cc', 'ly', 'gl', 'gd', 'im', 'nu', 'tk', 'ml', 'ga', 'cf'].includes(tld)) {
+                // 检查是否是常见的单字母域名
+                if (!['t', 'g', 'j', 'x', 'u', 'v', 'i', 'q', 's', 'w', 'y', 'z'].includes(name)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * 🔥 检查绝对路径是否为垃圾路径
+     * @param {string} path - 要检查的路径
+     * @returns {boolean} 是否为垃圾路径
+     */
+    isGarbageAbsolutePath(path) {
+        if (!path || typeof path !== 'string') {
+            return false;
+        }
+        
+        const cleanPath = path.trim();
+        
+        // 检查是否匹配垃圾模式
+        for (const pattern of this.ABSOLUTE_PATH_GARBAGE_PATTERNS) {
+            if (pattern.test(cleanPath)) {
+                return true;
+            }
+        }
+        
+        // 🔥 额外检查：路径中包含 .test, .exec, .mainAxis 等代码模式
+        if (/\.(test|exec|mainAxis|crossAxis|offsetWidth|offsetHeight|value|length|count|ratio)$/i.test(cleanPath)) {
+            return true;
+        }
+        
+        // 🔥 额外检查：路径看起来像正则表达式 /xxx/g, /xxx/i 等
+        if (/^\/[^/]+\/[gim]+$/i.test(cleanPath)) {
+            return true;
+        }
+        
+        // 🔥 额外检查：路径只包含数字和点（如 /1.055）
+        if (/^\/[\d.]+$/.test(cleanPath)) {
+            return true;
+        }
+        
+        // 🔥 额外检查：路径包含连续的大小写字母和连字符（如 /2-U-j-de-R）
+        if (/^\/\d+-[A-Za-z]+-?[A-Za-z]*-?[A-Za-z]*-?[A-Za-z]*/.test(cleanPath)) {
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * 🔥 检查Vue文件路径是否有效（只保留完整路径）
+     * @param {string} vuePath - Vue文件路径
+     * @returns {boolean} 是否为有效的Vue文件路径
+     */
+    isValidVueFilePath(vuePath) {
+        if (!vuePath || typeof vuePath !== 'string') {
+            return false;
+        }
+        
+        const cleanPath = vuePath.trim().replace(/^["']|["']$/g, ''); // 去除引号
+        
+        // 必须以 .vue 结尾
+        if (!cleanPath.toLowerCase().endsWith('.vue')) {
+            return false;
+        }
+        
+        // 必须包含路径分隔符（完整路径）
+        // 有效示例: /home/runner/work/xxx/xxx.vue, src/components/xxx.vue
+        // 无效示例: zoom-out.vue, button.vue
+        if (!cleanPath.includes('/') && !cleanPath.includes('\\')) {
+            return false;
+        }
+        
+        // 路径长度必须大于10（排除短路径如 a/b.vue）
+        if (cleanPath.length < 10) {
+            return false;
+        }
+        
+        return true;
+    }
 
     /**
      * 检查路径是否包含需要过滤的内容类型
@@ -325,9 +606,85 @@ class PatternExtractor {
     isFilteredByRegex(text) {
         if (!text || typeof text !== 'string') return false;
         try {
-            return this.FILTERED_REGEXES?.some(re => {
+            // 基础正则过滤
+            const matchedByRegex = this.FILTERED_REGEXES?.some(re => {
                 try { return re.test(text); } catch { return false; }
             }) || false;
+            
+            if (matchedByRegex) return true;
+            
+            // 🔥 额外的过滤规则
+            // 1) /this._xxx 格式（JS属性访问）
+            if (/\/this\.[_a-zA-Z]/.test(text)) return true;
+            
+            // 2) /_/g 格式（正则表达式标志）
+            if (/\/[_a-zA-Z]+\/[gimsuvy]+$/.test(text)) return true;
+            
+            // 3) 超长随机字符串（超过50个连续字母数字，可能是Base64或混淆代码）
+            if (/\/[A-Za-z0-9]{50,}/.test(text)) return true;
+            
+            // 4) 包含下划线开头的属性访问 /xxx._yyy
+            if (/\/[a-zA-Z]+\._[a-zA-Z]/.test(text)) return true;
+            
+            // 5) 纯数字或单字母路径
+            if (/^\/\d+$/.test(text) || /^\/[a-zA-Z]$/.test(text)) return true;
+            
+            // 6) 包含多个连续大写字母（可能是混淆代码）
+            if (/\/[A-Z]{10,}/.test(text)) return true;
+            
+            // 7) 路径中包含特殊字符组合（非正常API路径）
+            if (/\/[a-zA-Z]+[A-Z]{5,}[a-z]+[A-Z]{5,}/.test(text)) return true;
+            
+            // 8) 路径段过长（单个段超过100字符）
+            const segments = text.split('/');
+            if (segments.some(seg => seg.length > 100)) return true;
+            
+            // 9) 🔥 过滤随机字符串路径（如 /WB/taQT5uSAQIYhGDXvvDvn17dy5cunDhkiU7F1haHraPcnWAWkA）
+            // 检测路径段中包含大小写混合且长度超过20的随机字符串
+            for (const seg of segments) {
+                if (seg.length > 20) {
+                    // 检查是否是大小写混合的随机字符串（包含大写、小写和数字混合）
+                    const hasUpper = /[A-Z]/.test(seg);
+                    const hasLower = /[a-z]/.test(seg);
+                    const hasDigit = /\d/.test(seg);
+                    const isAlphanumeric = /^[A-Za-z0-9]+$/.test(seg);
+                    
+                    // 如果是纯字母数字且大小写混合，很可能是随机字符串
+                    if (isAlphanumeric && hasUpper && hasLower && seg.length > 25) {
+                        return true;
+                    }
+                    
+                    // 检查是否有过多的大小写交替（随机字符串特征）
+                    let caseChanges = 0;
+                    for (let i = 1; i < seg.length; i++) {
+                        const prevIsUpper = /[A-Z]/.test(seg[i-1]);
+                        const currIsUpper = /[A-Z]/.test(seg[i]);
+                        const prevIsLetter = /[a-zA-Z]/.test(seg[i-1]);
+                        const currIsLetter = /[a-zA-Z]/.test(seg[i]);
+                        if (prevIsLetter && currIsLetter && prevIsUpper !== currIsUpper) {
+                            caseChanges++;
+                        }
+                    }
+                    // 如果大小写交替次数过多（超过段长度的30%），认为是随机字符串
+                    if (caseChanges > seg.length * 0.3 && seg.length > 15) {
+                        return true;
+                    }
+                }
+            }
+            
+            // 10) 过滤看起来像 Base64 或 hash 的路径段
+            for (const seg of segments) {
+                // Base64 特征：长度是4的倍数，只包含字母数字和+/=
+                if (seg.length >= 32 && seg.length % 4 === 0 && /^[A-Za-z0-9+/=]+$/.test(seg)) {
+                    return true;
+                }
+                // Hash 特征：固定长度的十六进制字符串
+                if ((seg.length === 32 || seg.length === 40 || seg.length === 64) && /^[a-fA-F0-9]+$/.test(seg)) {
+                    return true;
+                }
+            }
+            
+            return false;
         } catch {
             return false;
         }
@@ -786,70 +1143,82 @@ class PatternExtractor {
     }
     
     /**
-     * 使用exec方法执行正则匹配 - 修复负向断言问题
+     * 使用exec方法执行正则匹配 - 性能优化版本
      */
     executeRegexWithExec(regex, content, results, resultKey, patternKey) {
-        //console.log(`🔍 [PatternExtractor] 使用exec方法处理: ${patternKey}`);
-        
         // 重置正则表达式状态
         regex.lastIndex = 0;
         let match;
         let matchCount = 0;
+        let addedCount = 0;
         let lastIndex = -1;
+        
+        // 性能优化：限制最大匹配数
+        const maxMatches = this.performanceConfig.maxMatchesPerPattern;
         
         while ((match = regex.exec(content)) !== null) {
             const matchedText = match[1] || match[0];
             if (matchedText && matchedText.trim()) {
                 const trimmedText = matchedText.trim();
                 
-                // 🔥 特殊处理：过滤绝对路径API中包含协议的内容
+                // 快速过滤检查
+                let shouldSkip = false;
+                
+                // 过滤绝对路径API中包含协议的内容
                 if (patternKey === 'absoluteApi' && (trimmedText.includes('http://') || trimmedText.includes('https://'))) {
-                    //console.log(`🚫 [PatternExtractor] 绝对路径API包含协议，已过滤: "${trimmedText}"`);
-                    matchCount++;
-                    continue;
+                    shouldSkip = true;
+                }
+                // 过滤绝对路径API中的静态文件
+                else if (patternKey === 'absoluteApi' && this.isStaticFile(trimmedText)) {
+                    shouldSkip = true;
+                }
+                // 过滤域名黑名单和垃圾域名
+                else if (patternKey === 'domain' && (this.isDomainBlacklisted(trimmedText) || this.isGarbageDomain(trimmedText))) {
+                    shouldSkip = true;
+                }
+                // 🔥 过滤Vue文件（只保留完整路径）
+                else if (patternKey === 'vue' && !this.isValidVueFilePath(trimmedText)) {
+                    shouldSkip = true;
+                }
+                // 🔥 过滤垃圾绝对路径
+                else if (patternKey === 'absoluteApi' && this.isGarbageAbsolutePath(trimmedText)) {
+                    shouldSkip = true;
+                }
+                // 过滤包含过滤内容类型的内容
+                else if (this.containsFilteredContentType(trimmedText)) {
+                    shouldSkip = true;
+                }
+                // 基于正则的二次过滤
+                else if (this.isFilteredByRegex(trimmedText)) {
+                    shouldSkip = true;
                 }
                 
-                // 🔥 新增特殊处理：过滤绝对路径API中的静态文件
-                if (patternKey === 'absoluteApi' && this.isStaticFile(trimmedText)) {
-                    //console.log(`🚫 [PatternExtractor] 绝对路径API为静态文件，已过滤: "${trimmedText}"`);
-                    matchCount++;
-                    continue;
+                if (!shouldSkip) {
+                    // 🔥 对 Vue 文件去除引号
+                    let finalText = trimmedText;
+                    if (patternKey === 'vue') {
+                        finalText = trimmedText.replace(/^["']|["']$/g, '');
+                    }
+                    results[resultKey].add(finalText);
+                    addedCount++;
                 }
-                
-                // 🔥 新增特殊处理：过滤域名黑名单
-                if (patternKey === 'domain' && this.isDomainBlacklisted(trimmedText)) {
-                    //console.log(`🚫 [PatternExtractor] 域名在黑名单中，已过滤: "${trimmedText}"`);
-                    matchCount++;
-                    continue;
-                }
-                
-                // 🔥 新增特殊处理：过滤包含过滤内容类型的内容
-                if (this.containsFilteredContentType(trimmedText)) {
-                    //console.log(`🚫 [PatternExtractor] ${patternKey} 包含过滤内容类型，已过滤: "${trimmedText}"`);
-                    matchCount++;
-                    continue;
-                }
-                // 新增：基于正则的二次过滤
-                if (this.isFilteredByRegex(trimmedText)) {
-                    //console.log(`🚫 [PatternExtractor] ${patternKey} 命中正则过滤，已过滤: "${trimmedText}"`);
-                    matchCount++;
-                    continue;
-                }
-                
-                results[resultKey].add(trimmedText);
                 matchCount++;
-                //console.log(`✅ [PatternExtractor] ${patternKey} 匹配到 ${matchCount}: "${trimmedText}"`);
             }
             
-            // 防止无限循环 - 特别针对负向断言
-            if (matchCount > 1000) {
+            // 性能优化：达到最大匹配数时停止
+            if (addedCount >= maxMatches) {
+                console.warn(`⚠️ [PatternExtractor] ${patternKey} 达到最大匹配数 ${maxMatches}，停止匹配`);
+                break;
+            }
+            
+            // 防止无限循环
+            if (matchCount > maxMatches * 2) {
                 console.warn(`⚠️ [PatternExtractor] ${patternKey} 匹配次数过多，停止匹配`);
                 break;
             }
             
             // 检查是否陷入无限循环
             if (regex.lastIndex === lastIndex) {
-                console.warn(`⚠️ [PatternExtractor] ${patternKey} 检测到无限循环，强制推进`);
                 regex.lastIndex = lastIndex + 1;
                 if (regex.lastIndex >= content.length) {
                     break;
@@ -859,7 +1228,6 @@ class PatternExtractor {
             
             // 对于非全局正则或者lastIndex为0的情况，手动推进
             if (!regex.global || regex.lastIndex === 0) {
-                console.warn(`⚠️ [PatternExtractor] ${patternKey} 非全局正则或lastIndex为0，手动推进`);
                 regex.lastIndex = match.index + 1;
                 if (regex.lastIndex >= content.length) {
                     break;
@@ -921,6 +1289,10 @@ class PatternExtractor {
                     // 🔥 新增校验：过滤掉包含过滤内容类型的API
                     else if (this.shouldFilter(trimmedApi)) {
                         //console.log(`🚫 [PatternExtractor] 绝对路径API被shouldFilter过滤: "${trimmedApi}"`);
+                    }
+                    // 🔥 新增校验：过滤垃圾绝对路径
+                    else if (this.isGarbageAbsolutePath(trimmedApi)) {
+                        //console.log(`🚫 [PatternExtractor] 绝对路径API为垃圾路径，已过滤: "${trimmedApi}"`);
                     } else {
                         results.absoluteApis.add(trimmedApi);
                         absoluteApiCount++;
@@ -971,8 +1343,12 @@ class PatternExtractor {
                     // 🔥 新增：处理相对路径API，去除开头的"."符号但保留"/"
                     const processedApi = this.processRelativeApi(api.trim());
                     
+                    // 🔥 跨类别去重：如果已在 absoluteApis 中存在，跳过
+                    if (results.absoluteApis.has(processedApi)) {
+                        //console.log(`🚫 [PatternExtractor] 相对路径API已在绝对路径中存在，跳过: "${processedApi}"`);
+                    }
                     // 🔥 新增特殊处理：过滤相对路径API中的静态文件（应用绝对路径API的过滤模式）
-                    if (this.isStaticFile(processedApi)) {
+                    else if (this.isStaticFile(processedApi)) {
                         //console.log(`🚫 [PatternExtractor] 相对路径API为静态文件，已过滤: "${processedApi}"`);
                     }
                     // 🔥 新增特殊处理：过滤相对路径API中包含过滤内容类型的API
@@ -1087,6 +1463,7 @@ class PatternExtractor {
         // 提取URL - 🔥 新增：过滤图片文件，重新分类JS文件和CSS文件
         if (this.patterns.url) {
             //console.log('🔍 [PatternExtractor] 开始提取URL...');
+            
             this.patterns.url.lastIndex = 0;
             let match;
             let urlCount = 0;
@@ -1101,6 +1478,12 @@ class PatternExtractor {
                     if (this.isImageFile(url)) {
                         filteredImageCount++;
                         //console.log(`🚫 [PatternExtractor] URL为图片文件，已过滤: "${url}"`);
+                        
+                        // 🔥 增强：从图片 URL 中也提取域名（图片可能来自 CDN 等外部域名）
+                        const imgDomain = this.extractDomainFromUrl(url);
+                        if (imgDomain && !this.isDomainBlacklisted(imgDomain) && !this.isGarbageDomain(imgDomain)) {
+                            results.domains.add(imgDomain);
+                        }
                         continue;
                     }
                     
@@ -1109,6 +1492,12 @@ class PatternExtractor {
                         results.jsFiles.add(url);
                         reclassifiedJsCount++;
                         //console.log(`🔄 [PatternExtractor] URL为JS文件，已重新分类到JS文件: "${url}"`);
+                        
+                        // 🔥 增强：从 JS 文件 URL 中也提取域名
+                        const jsDomain = this.extractDomainFromUrl(url);
+                        if (jsDomain && !this.isDomainBlacklisted(jsDomain) && !this.isGarbageDomain(jsDomain)) {
+                            results.domains.add(jsDomain);
+                        }
                         continue;
                     }
                     
@@ -1117,6 +1506,12 @@ class PatternExtractor {
                         results.cssFiles.add(url);
                         reclassifiedCssCount++;
                         //console.log(`🔄 [PatternExtractor] URL为CSS文件，已重新分类到CSS文件: "${url}"`);
+                        
+                        // 🔥 增强：从 CSS 文件 URL 中也提取域名
+                        const cssDomain = this.extractDomainFromUrl(url);
+                        if (cssDomain && !this.isDomainBlacklisted(cssDomain) && !this.isGarbageDomain(cssDomain)) {
+                            results.domains.add(cssDomain);
+                        }
                         continue;
                     }
                     
@@ -1125,29 +1520,170 @@ class PatternExtractor {
                         results.urls.add(url);
                         urlCount++;
                         //console.log(`✅ [PatternExtractor] URL添加: "${url}"`);
-                    } else {
-                        //console.log(`🚫 [PatternExtractor] URL包含过滤内容类型，已过滤: "${url}"`);
+                        
+                        // 🔥 新增：从URL中提取域名并添加到域名列表
+                        const extractedDomain = this.extractDomainFromUrl(url);
+                        if (extractedDomain) {
+                            const isBlacklisted = this.isDomainBlacklisted(extractedDomain);
+                            const isGarbage = this.isGarbageDomain(extractedDomain);
+                            
+                            if (!isBlacklisted && !isGarbage) {
+                                results.domains.add(extractedDomain);
+                                //console.log(`✅ [PatternExtractor] 从URL提取域名成功: "${extractedDomain}"`);
+                            }
+                        }
                     }
                 }
             }
-            //console.log(`📊 [PatternExtractor] URL提取完成，共找到 ${urlCount} 个，过滤图片 ${filteredImageCount} 个，重新分类JS ${reclassifiedJsCount} 个，重新分类CSS ${reclassifiedCssCount} 个`);
+            //console.log(`📊 [PatternExtractor] URL提取完成，共找到 ${urlCount} 个`);
         }
+        
+        // 🔥 提取 Vue 文件
+        this.extractVueFiles(processContent, results);
+        
+        // 🔥 提取 Source Map 文件
+        this.extractSourceMapFiles(processContent, results);
         
         //console.log('✅ [PatternExtractor] 其他资源提取完成');
     }
     
     /**
+     * 🔥 提取 Vue 单文件组件引用
+     * @param {string} content - 内容
+     * @param {Object} results - 结果对象
+     */
+    extractVueFiles(content, results) {
+        if (!content) return;
+        
+        // Vue 文件引用模式
+        const vuePatterns = [
+            // import 语句
+            /import\s+(?:\w+|\{[^}]+\})\s+from\s+['"]([^'"]+\.vue)['"]/gi,
+            // require 语句
+            /require\s*\(\s*['"]([^'"]+\.vue)['"]\s*\)/gi,
+            // 动态 import
+            /import\s*\(\s*['"]([^'"]+\.vue)['"]\s*\)/gi,
+            // webpack chunk 注释
+            /webpackChunkName:\s*['"][^'"]+['"]\s*\*\/\s*['"]([^'"]+\.vue)['"]/gi,
+            // 字符串中的 .vue 路径
+            /['"]([^'"]*\/[^'"]+\.vue)['"]/gi
+        ];
+        
+        for (const pattern of vuePatterns) {
+            let match;
+            while ((match = pattern.exec(content)) !== null) {
+                const vuePath = match[1];
+                if (vuePath && !vuePath.includes('node_modules')) {
+                    results.vueFiles.add({
+                        value: vuePath,
+                        type: 'vue-import',
+                        extractedAt: new Date().toISOString()
+                    });
+                }
+            }
+        }
+    }
+    
+    /**
+     * 🔥 提取 Source Map 文件引用
+     * @param {string} content - 内容
+     * @param {Object} results - 结果对象
+     */
+    extractSourceMapFiles(content, results) {
+        if (!content) return;
+        
+        // 初始化 sourceMapFiles 如果不存在
+        if (!results.sourceMapFiles) {
+            results.sourceMapFiles = new Set();
+        }
+        
+        // Source Map 引用模式
+        const sourceMapPatterns = [
+            // sourceMappingURL 注释
+            /\/\/[#@]\s*sourceMappingURL=([^\s\n]+)/g,
+            /\/\*[#@]\s*sourceMappingURL=([^\s*]+)\s*\*\//g,
+            // .map 文件引用
+            /['"]([^'"]+\.map)['"]/gi,
+            // .js.map 文件引用
+            /['"]([^'"]+\.js\.map)['"]/gi
+        ];
+        
+        for (const pattern of sourceMapPatterns) {
+            let match;
+            while ((match = pattern.exec(content)) !== null) {
+                const mapPath = match[1];
+                if (mapPath && !mapPath.startsWith('data:')) {
+                    results.sourceMapFiles.add({
+                        value: mapPath,
+                        type: 'sourcemap-reference',
+                        extractedAt: new Date().toISOString()
+                    });
+                }
+            }
+        }
+    }
+    
+    /**
+     * 🔥 从URL中提取域名
+     * @param {string} url - 完整的URL
+     * @returns {string|null} 提取的域名，如果无法提取则返回null
+     */
+    extractDomainFromUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return null;
+        }
+        
+        try {
+            // 移除协议前缀
+            let domain = url.replace(/^https?:\/\//, '');
+            
+            // 移除www前缀
+            domain = domain.replace(/^www\./, '');
+            
+            // 移除路径、查询参数、锚点和端口
+            domain = domain.split('/')[0];
+            domain = domain.split('?')[0];
+            domain = domain.split('#')[0];
+            domain = domain.split(':')[0];
+            
+            // 清理并转小写
+            domain = domain.toLowerCase().trim();
+            
+            // 验证域名格式
+            if (!domain || domain.length < 3 || !domain.includes('.')) {
+                return null;
+            }
+            
+            // 检查是否是IP地址（不作为域名返回）
+            if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(domain)) {
+                return null;
+            }
+            
+            return domain;
+        } catch (error) {
+            return null;
+        }
+    }
+    
+    /**
      * 提取动态自定义正则模式 - 统一化版本
+     * 🔥 性能优化：使用已加载的 patterns 而不是重新从 storage 读取
      */
     async extractDynamicCustomPatterns(content, results) {
         try {
             //console.log('🔄 [PatternExtractor] 开始提取动态自定义正则模式...');
             
-            // 确保自定义配置已加载
-            await this.ensureCustomPatternsLoaded();
+            // 🔥 性能优化：直接使用已加载的 patterns，不再重复读取 storage
+            // 自定义正则已经在 loadCustomPatterns 中加载到 this.patterns 中了
+            const customPatternKeys = Object.keys(this.patterns).filter(key => key.startsWith('custom_'));
             
-            // 获取当前的自定义正则配置
-            const storageResult = await chrome.storage.local.get(['customRegexConfigs']);
+            if (customPatternKeys.length === 0) {
+                //console.log('ℹ️ [PatternExtractor] 未找到动态自定义正则配置');
+                return;
+            }
+            
+            // 🔥 性能优化：移除重复的 storage 读取
+            const storageResult = { customRegexConfigs: null }; // 占位符，不再使用
             
             if (!storageResult.customRegexConfigs) {
                 //console.log('ℹ️ [PatternExtractor] 未找到动态自定义正则配置');
@@ -1278,6 +1814,7 @@ class PatternExtractor {
     
     /**
      * 提取所有模式 - 统一化版本，只使用设置界面配置
+     * 🔥 性能优化：移除重复的配置加载检查
      */
     async extractPatterns(content, sourceUrl = '') {
         try {
@@ -1286,8 +1823,11 @@ class PatternExtractor {
             //console.log(`🌐 [PatternExtractor] 源URL: ${sourceUrl}`);
             //console.log('🔍🔍🔍 [PatternExtractor] 这个方法被调用了！');
             
-            // 确保自定义配置已加载
-            await this.ensureCustomPatternsLoaded();
+            // 🔥 性能优化：配置已在扫描开始时加载，这里不再重复加载
+            // 只有在配置确实未加载时才加载（首次调用的情况）
+            if (!this.customPatternsLoaded && Object.keys(this.patterns).length === 0) {
+                await this.ensureCustomPatternsLoaded();
+            }
             
             // 初始化结果对象，使用Set避免重复 - 修复：使用正确的键名
             const results = {
@@ -1404,9 +1944,23 @@ class PatternExtractor {
                                         return;
                                     }
                                     
-                                    // 🔥 新增特殊处理：过滤域名黑名单
-                                    if (patternKey === 'domain' && this.isDomainBlacklisted(trimmedText)) {
-                                        //console.log(`🚫 [PatternExtractor] 域名在黑名单中，已过滤: "${trimmedText}"`);
+                                    // 🔥 新增特殊处理：过滤域名黑名单和垃圾域名
+                                    if (patternKey === 'domain') {
+                                        if (this.isDomainBlacklisted(trimmedText)) {
+                                            return;
+                                        }
+                                        if (this.isGarbageDomain(trimmedText)) {
+                                            return;
+                                        }
+                                    }
+                                    
+                                    // 🔥 新增特殊处理：过滤Vue文件（只保留完整路径）
+                                    if (patternKey === 'vue' && !this.isValidVueFilePath(trimmedText)) {
+                                        return;
+                                    }
+                                    
+                                    // 🔥 新增特殊处理：过滤垃圾绝对路径
+                                    if (patternKey === 'absoluteApi' && this.isGarbageAbsolutePath(trimmedText)) {
                                         return;
                                     }
                                     
@@ -1422,7 +1976,12 @@ class PatternExtractor {
                                         return;
                                     }
                                     
-                                    results[resultKey].add(trimmedText);
+                                    // 🔥 对 Vue 文件去除引号
+                                    let finalText = trimmedText;
+                                    if (patternKey === 'vue') {
+                                        finalText = trimmedText.replace(/^["']|["']$/g, '');
+                                    }
+                                    results[resultKey].add(finalText);
                                     //console.log(`✅ [PatternExtractor] ${patternKey} 匹配到 ${index + 1}: "${trimmedText}"`);
                                 }
                             });

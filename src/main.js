@@ -1391,8 +1391,51 @@ async function checkForUpdate() {
     } catch (e) {}
 }
 
+// 初始化 AST 系统
+async function initASTSystem() {
+    console.log('🔄 [AST] 开始初始化 AST 系统...');
+    
+    try {
+        // 检查依赖
+        if (!window.acorn) {
+            console.warn('⚠️ [AST] acorn 未加载');
+            return false;
+        }
+        
+        // 优先使用 astBridge
+        if (window.astBridge) {
+            console.log('🔄 [AST] 使用 ASTBridge 初始化...');
+            const initResult = await window.astBridge.init();
+            
+            if (initResult && window.astBridge.isAvailable()) {
+                console.log('✅ [AST] ASTBridge 初始化成功');
+                return true;
+            }
+        }
+        
+        // 备选：使用 initASTExtractor
+        if (typeof window.initASTExtractor === 'function') {
+            console.log('🔄 [AST] 使用 initASTExtractor 初始化...');
+            await window.initASTExtractor();
+            console.log('✅ [AST] ASTExtractor 初始化成功');
+            return true;
+        }
+        
+        console.warn('⚠️ [AST] AST 模块未加载');
+        return false;
+        
+    } catch (error) {
+        console.error('❌ [AST] AST 系统初始化失败:', error);
+        return false;
+    }
+}
+
 // 初始化应用
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // 初始化 AST 系统
+    await initASTSystem();
+    
+    // 初始化主应用
     new ILoveYouTranslucent7();
     checkForUpdate();
 });

@@ -61,7 +61,9 @@ class DisplayManager {
             { key: 'cookies', title: 'Cookie信息', icon: '🍪' },
             { key: 'idKeys', title: 'ID密钥', icon: '🔑' },
             { key: 'sensitiveKeywords', title: '敏感关键词', icon: '⚠️' },
-            { key: 'comments', title: '代码注释', icon: '<!--' }
+            { key: 'comments', title: '代码注释', icon: '<!--' },
+            // Vue 检测结果
+            { key: 'vueRoutes', title: 'Vue路由', icon: 'Vue' }
         ];
 
         // 动态加载自定义正则配置并添加到显示类别中 - 修复：支持对象和数组两种存储格式

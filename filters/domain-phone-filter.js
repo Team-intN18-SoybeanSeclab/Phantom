@@ -312,6 +312,42 @@ class DomainPhoneFilter {
         // 检查是否包含点号（域名必须有点号）
         if (!domain.includes('.')) return false;
         
+        // 🔥 新增：过滤代码中的属性访问模式（如 refs.timepicker.date）
+        const codePatterns = [
+            /^refs\./i,           // refs.xxx
+            /^this\./i,           // this.xxx
+            /^props\./i,          // props.xxx
+            /^state\./i,          // state.xxx
+            /^data\./i,           // data.xxx
+            /^options\./i,        // options.xxx
+            /^config\./i,         // config.xxx
+            /^window\./i,         // window.xxx
+            /^document\./i,       // document.xxx
+            /^console\./i,        // console.xxx
+            /^\$refs\./i,         // $refs.xxx (Vue)
+            /^\$\./i,             // $.xxx (jQuery)
+            /^_\./i,              // _.xxx (lodash)
+        ];
+        for (const pattern of codePatterns) {
+            if (pattern.test(domain)) return false;
+        }
+        
+        // 🔥 新增：过滤包含多个点号的代码属性访问（如 refs.timepicker.date）
+        const dotCount = (domain.match(/\./g) || []).length;
+        if (dotCount >= 3) {
+            // 超过3个点的很可能是代码中的属性访问链
+            return false;
+        }
+        
+        // 🔥 新增：过滤包含常见代码关键字的域名
+        const codeKeywords = ['refs', 'timepicker', 'datepicker', 'picker', 'input', 
+                              'button', 'modal', 'dialog', 'form', 'table', 'element'];
+        for (const keyword of codeKeywords) {
+            if (domain.includes(keyword + '.') || domain.includes('.' + keyword + '.')) {
+                return false;
+            }
+        }
+        
         // 检查基本格式
         const domainRegex = /^[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z0-9\-]+$/i;
         if (!domainRegex.test(domain)) return false;
@@ -332,7 +368,18 @@ class DomainPhoneFilter {
         if (tld.length < 2 || tld.length > 63) return false;
         
         // 检查是否是有效的顶级域名
-        if (!this.domainTLDs.has(tld)) return false;
+        // 放宽限制：如果 TLD 在已知列表中，直接通过
+        // 如果不在列表中，检查是否符合基本的 TLD 格式（2-10个字母）
+        if (!this.domainTLDs.has(tld)) {
+            // 允许未知但格式合理的 TLD（2-10个字母，纯字母）
+            if (!/^[a-z]{2,10}$/.test(tld)) {
+                return false;
+            }
+            // 排除一些明显是文件扩展名的
+            if (this.invalidSuffixes.has(tld)) {
+                return false;
+            }
+        }
         
         // 额外检查：过滤掉一些明显不是域名的模式
         // 过滤掉纯数字域名（除了IP地址格式）
