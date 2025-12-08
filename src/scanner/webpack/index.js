@@ -68,9 +68,10 @@ async function detectWebpack() {
 
 /**
  * 执行完整 Webpack 扫描
+ * @param {boolean} deepScan - 是否进行深度扫描（分析外部脚本内容）
  * @returns {Object} 扫描结果
  */
-async function scanWebpack() {
+async function scanWebpack(deepScan = false) {
     try {
         if (!window.webpackScannerBridge) {
             await initWebpackScanner();
@@ -80,12 +81,21 @@ async function scanWebpack() {
             return { detected: false, error: 'WebpackScannerBridge 未初始化' };
         }
         
-        return await window.webpackScannerBridge.scan();
+        return await window.webpackScannerBridge.scan(deepScan);
         
     } catch (error) {
         console.error('[WebpackScanner] 扫描失败:', error);
         return { detected: false, error: error.message };
     }
+}
+
+/**
+ * 执行深度 Webpack 扫描（分析外部脚本内容）
+ * 参考 Webpack_Insight 的 analyzeExternalScripts 功能
+ * @returns {Object} 扫描结果
+ */
+async function deepScanWebpack() {
+    return await scanWebpack(true);
 }
 
 /**
@@ -217,6 +227,7 @@ if (typeof window !== 'undefined') {
     window.initWebpackScanner = initWebpackScanner;
     window.detectWebpack = detectWebpack;
     window.scanWebpack = scanWebpack;
+    window.deepScanWebpack = deepScanWebpack;
     window.getWebpackScannerStatus = getWebpackScannerStatus;
     window.getWebpackScanSummary = getWebpackScanSummary;
     window.detectVueWebpack = detectVueWebpack;

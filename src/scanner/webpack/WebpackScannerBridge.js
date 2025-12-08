@@ -53,9 +53,10 @@ class WebpackScannerBridge {
 
     /**
      * 执行完整扫描
+     * @param {boolean} deepScan - 是否进行深度扫描（分析外部脚本内容）
      * @returns {WebpackScanResult} 扫描结果
      */
-    async scan() {
+    async scan(deepScan = false) {
         if (!this.initialized) {
             await this.init();
         }
@@ -63,6 +64,8 @@ class WebpackScannerBridge {
         const result = {
             detection: null,
             chunks: [],
+            loadedFiles: [],
+            unloadedFiles: [],
             sourceMaps: [],
             modules: [],
             configModules: [],
@@ -73,7 +76,8 @@ class WebpackScannerBridge {
             metadata: {
                 scanTime: 0,
                 chunksScanned: 0,
-                modulesAnalyzed: 0
+                modulesAnalyzed: 0,
+                deepScan: deepScan
             }
         };
         
@@ -114,9 +118,38 @@ class WebpackScannerBridge {
                 }
             }
             
+            // 🔥 深度扫描：分析外部脚本内容（参考 Webpack_Insight 的 analyzeExternalScripts）
+            if (deepScan) {
+                console.log('[WebpackScannerBridge] 开始深度扫描外部脚本...');
+                const externalScriptSrcs = document.querySelectorAll('script[src]');
+                const scriptUrls = Array.from(externalScriptSrcs)
+                    .map(s => s.src)
+                    .filter(src => src && src.includes('.js'));
+                
+                for (const scriptUrl of scriptUrls) {
+                    try {
+                        const scriptContent = await this._fetchWithTimeout(scriptUrl);
+                        if (scriptContent && scriptContent.length > 100) {
+                            const refs = this.chunkAnalyzer.extractChunkReferences(scriptContent, scriptUrl);
+                            result.chunks.push(...refs);
+                        }
+                    } catch (e) {
+                        // 忽略获取失败
+                    }
+                }
+            }
+            
             // 去重
             result.chunks = this._deduplicateChunks(result.chunks);
             result.metadata.chunksScanned = result.chunks.length;
+            
+            // 记录已加载和未加载的文件
+            result.loadedFiles = this.chunkAnalyzer.getLoadedFiles();
+            result.unloadedFiles = this.chunkAnalyzer.getUnloadedFiles();
+            
+            console.log('[WebpackScannerBridge] 发现 chunks:', result.chunks.length, 
+                        '已加载:', result.loadedFiles.length, 
+                        '未加载:', result.unloadedFiles.length);
             
             // 4. 分析 Runtime
             console.log('[WebpackScannerBridge] 分析 Runtime...');
