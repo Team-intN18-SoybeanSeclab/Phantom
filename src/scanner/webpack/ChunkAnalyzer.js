@@ -1,6 +1,7 @@
 /**
  * ChunkAnalyzer - Webpack Chunk 分析器
  * 负责发现和分析 Webpack chunk 文件
+ * 参考 Webpack_Insight 的实现进行优化
  * 
  * @class ChunkAnalyzer
  */
@@ -10,39 +11,28 @@ class ChunkAnalyzer {
         this.maxEnumeration = options.maxEnumeration || 100;
         this.baseUrl = options.baseUrl || '';
         this.debug = options.debug || false;
-        
-        // 存储发现的 chunk
         this.chunks = new Map();
-        
-        // chunk 命名模式
+        this.loadedFiles = new Set();
+        this.unloadedFiles = new Set();
         this.chunkPatterns = [];
+        this.detectedBasePath = '';
     }
 
     /**
-     * 从代码中提取 chunk 引用
-     * @param {string} code - 代码内容
-     * @param {string} sourceUrl - 源文件 URL
-     * @returns {ChunkReference[]} chunk 引用列表
+     * 从代码中提取 chunk 引用 - 核心方法
      */
     extractChunkReferences(code, sourceUrl) {
         const references = [];
         
         try {
-            // 从 HTML script 标签提取
             references.push(...this._extractFromHtml(code, sourceUrl));
-            
-            // 从 JS 代码中提取
+            references.push(...this._analyzeScriptContent(code, sourceUrl));
             references.push(...this._extractFromJs(code, sourceUrl));
             
-            // 从 Webpack Runtime 提取
-            references.push(...this._extractFromRuntime(code, sourceUrl));
-            
-            // 去重
             const uniqueRefs = this._deduplicateReferences(references);
             
-            // 存储到 chunks Map
             for (const ref of uniqueRefs) {
-                if (!this.chunks.has(ref.url)) {
+                if (ref.url && !this.chunks.has(ref.url)) {
                     this.chunks.set(ref.url, ref);
                 }
             }
@@ -52,38 +42,249 @@ class ChunkAnalyzer {
             }
             
             return uniqueRefs;
-            
         } catch (error) {
             console.error('[ChunkAnalyzer] 提取 chunk 引用失败:', error);
             return references;
         }
     }
 
+    /**
+     * 核心方法：分析脚本内容提取 chunk 映射
+     * 参考 Webpack_Insight 的 analyzeScriptContent 实现
+     */
+    _analyzeScriptContent(content, sourceUrl) {
+        const references = [];
+        
+        if (!content || content.length < 100) {
+            return references;
+        }
+        
+        try {
+            // 查找路径前缀: a.p + "static/js/" 或 e.p + "js/"
+            const functionMatch = content.match(/([a-zA-Z]\.[a-zA-Z])\s*\+\s*["']([^"']+)["']/);
+            let basePath = '';
+            if (functionMatch) {
+                basePath = functionMatch[2];
+                this.detectedBasePath = basePath;
+            }
+
+            // 模式1: 标准的 chunk 映射 (Webpack_Insight 核心模式)
+            const chunkMapMatch = content.match(/return.*?\((\{\s*"[^}]+\})\s*.*?(\{\s*"[^}]+\})\[[a-zA-Z]\]\s*\+\s*"(.*?\.js)"/);
+            if (chunkMapMatch) {
+                let nameMap = chunkMapMatch[1];
+                let hashMap = chunkMapMatch[2];
+                let suffix = chunkMapMatch[3];
+                
+                const suffixToo = suffix.match(/\]\s*\+\s*"(.*?\.js)/);
+                if (suffixToo) {
+                    suffix = suffixToo[1];
+                }
+                
+                const nameEntries = nameMap.match(/"[^"]+"\s*:\s*"[^"]+"/g) || [];
+                const chunkNames = {};
+                
+                nameEntries.forEach(entry => {
+                    const parts = entry.replace(/"/g, '').split(':').map(s => s.trim());
+                    if (parts.length === 2) {
+                        chunkNames[parts[0]] = parts[1];
+                    }
+                });
+                
+                const hashEntries = hashMap.match(/"[^"]+"\s*:\s*"[^"]+"/g) || [];
+                
+                hashEntries.forEach(entry => {
+                    const parts = entry.replace(/"/g, '').split(':').map(s => s.trim());
+                    if (parts.length === 2) {
+                        const key = parts[0];
+                        const hash = parts[1];
+                        const chunkName = chunkNames[key] || key;
+                        const jsPath = basePath + chunkName + '.' + hash + suffix;
+                        const fullUrl = this._buildFullUrl(jsPath, sourceUrl);
+                        
+                        if (fullUrl && !this.loadedFiles.has(fullUrl)) {
+                            references.push(this._createReference(fullUrl, sourceUrl, 'runtime-map', 'async', key));
+                        }
+                    }
+                });
+                
+                if (references.length > 0) return references;
+            }
+            
+            // 模式2: 替代格式 {...}[e] + ".xxx.js"
+            const altMatch = content.match(/(\{\s*"[^}]+\})\[[a-zA-Z]\]\s*\+\s*"(.*?\.js)"/);
+            if (altMatch) {
+                const chunkEntries = altMatch[1].match(/"[^"]+"\s*:\s*"[^"]+"/g) || [];
+                const fileSuffix = altMatch[2];
+                
+                chunkEntries.forEach(entry => {
+                    const parts = entry.replace(/"/g, '').split(':').map(s => s.trim());
+                    if (parts.length === 2) {
+                        const chunkName = parts[0];
+                        const hash = parts[1];
+                        const jsPath = basePath + chunkName + '.' + hash + fileSuffix;
+                        const fullUrl = this._buildFullUrl(jsPath, sourceUrl);
+                        
+                        if (fullUrl && !this.loadedFiles.has(fullUrl)) {
+                            references.push(this._createReference(fullUrl, sourceUrl, 'runtime-alt', 'async', chunkName));
+                        }
+                    }
+                });
+                
+                if (references.length > 0) return references;
+            }
+            
+            // 模式3: +{...}[e]+".xxx.js"
+            const altMatch2 = content.match(/\+(\{[^}]+\})\[[a-zA-Z]\]\+"([^"]*\.js)"/);
+            if (altMatch2) {
+                const chunkEntries2 = altMatch2[1].match(/"?[\w]+?"?\s*:\s*"[^"]+"/g) || [];
+                let fileSuffix2 = '.js';
+                
+                chunkEntries2.forEach(entry => {
+                    const parts = entry.replace(/"/g, '').split(':').map(s => s.trim());
+                    if (parts.length === 2) {
+                        const chunkName = parts[0];
+                        const hash = parts[1];
+                        const jsPath = basePath + chunkName + '.' + hash + fileSuffix2;
+                        const fullUrl = this._buildFullUrl(jsPath, sourceUrl);
+                        
+                        if (fullUrl && !this.loadedFiles.has(fullUrl)) {
+                            references.push(this._createReference(fullUrl, sourceUrl, 'runtime-alt2', 'async', chunkName));
+                        }
+                    }
+                });
+                
+                if (references.length > 0) return references;
+            }
+
+            // 模式4: Webpack 5 的 chunk 加载模式
+            const webpack5Pattern = /__webpack_require__\.u\s*=\s*function\s*\([^)]*\)\s*\{[^}]*return[^}]*(\{[^}]+\})/;
+            const webpack5Match = content.match(webpack5Pattern);
+            if (webpack5Match) {
+                const hashMap5 = webpack5Match[1];
+                const hashEntries5 = hashMap5.match(/(\d+|"[^"]+")\s*:\s*"([^"]+)"/g) || [];
+                
+                hashEntries5.forEach(entry => {
+                    const match = entry.match(/(\d+|"[^"]+")\s*:\s*"([^"]+)"/);
+                    if (match) {
+                        const chunkId = match[1].replace(/"/g, '');
+                        const hash = match[2];
+                        const jsPath = basePath + chunkId + '.' + hash + '.js';
+                        const fullUrl = this._buildFullUrl(jsPath, sourceUrl);
+                        
+                        if (fullUrl && !this.loadedFiles.has(fullUrl)) {
+                            references.push(this._createReference(fullUrl, sourceUrl, 'webpack5', 'async', chunkId));
+                        }
+                    }
+                });
+            }
+            
+            // 模式5: 简单的 chunk ID 到 hash 映射 {1:"abc123",2:"def456",...}
+            const simpleMapPattern = /\{(\s*\d+\s*:\s*"[a-f0-9]+"\s*,?\s*)+\}/g;
+            let simpleMatch;
+            while ((simpleMatch = simpleMapPattern.exec(content)) !== null) {
+                const mapStr = simpleMatch[0];
+                const itemPattern = /(\d+)\s*:\s*"([a-f0-9]+)"/g;
+                let itemMatch;
+                
+                while ((itemMatch = itemPattern.exec(mapStr)) !== null) {
+                    const chunkId = itemMatch[1];
+                    const hash = itemMatch[2];
+                    const jsPath = basePath + chunkId + '.' + hash + '.js';
+                    const fullUrl = this._buildFullUrl(jsPath, sourceUrl);
+                    
+                    if (fullUrl && !this.loadedFiles.has(fullUrl) && !this.chunks.has(fullUrl)) {
+                        references.push(this._createReference(fullUrl, sourceUrl, 'simple-map', 'async', chunkId));
+                    }
+                }
+            }
+            
+            // 模式6: 命名 chunk 映射 {"chunk-name":"hash",...}
+            const namedChunkPattern = /\{\s*"([a-zA-Z][\w-]*)"\s*:\s*"([a-f0-9]+)"/g;
+            let namedMatch;
+            while ((namedMatch = namedChunkPattern.exec(content)) !== null) {
+                const chunkName = namedMatch[1];
+                const hash = namedMatch[2];
+                
+                if (['id', 'name', 'type', 'hash', 'version', 'mode'].includes(chunkName.toLowerCase())) {
+                    continue;
+                }
+                
+                const jsPath = basePath + chunkName + '.' + hash + '.js';
+                const fullUrl = this._buildFullUrl(jsPath, sourceUrl);
+                
+                if (fullUrl && !this.loadedFiles.has(fullUrl) && !this.chunks.has(fullUrl)) {
+                    references.push(this._createReference(fullUrl, sourceUrl, 'named-chunk', 'async', chunkName));
+                }
+            }
+            
+        } catch (error) {
+            console.warn('[ChunkAnalyzer] 分析脚本内容时出错:', error);
+        }
+        
+        return references;
+    }
+
+    /**
+     * 构建完整 URL
+     */
+    _buildFullUrl(path, sourceUrl) {
+        try {
+            if (!path) return null;
+            
+            if (path.startsWith('http://') || path.startsWith('https://')) {
+                return path;
+            }
+            
+            if (path.startsWith('//')) {
+                const protocol = new URL(sourceUrl || this.baseUrl).protocol;
+                return protocol + path;
+            }
+            
+            const base = sourceUrl || this.baseUrl || window.location.origin;
+            
+            if (path.startsWith('/')) {
+                return new URL(path, base).href;
+            }
+            
+            if (this.publicPath) {
+                return new URL(this.publicPath + path, base).href;
+            }
+            
+            return new URL(path, base).href;
+        } catch (error) {
+            return null;
+        }
+    }
+
 
     /**
      * 从 HTML 中提取 chunk 引用
-     * @private
      */
     _extractFromHtml(code, sourceUrl) {
         const references = [];
         
-        // 匹配 script 标签的 src 属性
         const scriptPattern = /<script[^>]+src=["']([^"']+)["'][^>]*>/gi;
         let match;
         
         while ((match = scriptPattern.exec(code)) !== null) {
             const src = match[1];
+            const fullUrl = this._buildFullUrl(src, sourceUrl);
+            
+            if (fullUrl) {
+                this.loadedFiles.add(fullUrl);
+            }
+            
             if (this._isChunkFile(src)) {
-                references.push(this._createReference(src, sourceUrl, 'html', 'initial'));
+                references.push(this._createReference(fullUrl || src, sourceUrl, 'html', 'initial'));
             }
         }
         
-        // 匹配 link 标签的 preload/prefetch
         const linkPattern = /<link[^>]+href=["']([^"']+\.js)["'][^>]*>/gi;
         while ((match = linkPattern.exec(code)) !== null) {
             const href = match[1];
             if (this._isChunkFile(href)) {
-                references.push(this._createReference(href, sourceUrl, 'html', 'preload'));
+                const fullUrl = this._buildFullUrl(href, sourceUrl);
+                references.push(this._createReference(fullUrl || href, sourceUrl, 'html', 'preload'));
             }
         }
         
@@ -91,75 +292,32 @@ class ChunkAnalyzer {
     }
 
     /**
-     * 从 JS 代码中提取 chunk 引用
-     * @private
+     * 从 JS 代码中提取 chunk 引用（简单模式匹配）
      */
     _extractFromJs(code, sourceUrl) {
         const references = [];
         
-        // 匹配字符串中的 chunk 文件路径
         const patterns = [
-            // 常见的 chunk 文件名模式
-            /["']([^"']*\/?\d+\.[a-f0-9]+\.js)["']/gi,
+            /["']([^"']*\/?\d+\.[a-f0-9]{6,}\.js)["']/gi,
             /["']([^"']*\/?\d+\.bundle\.js)["']/gi,
             /["']([^"']*\/chunk\.[a-f0-9]+\.js)["']/gi,
             /["']([^"']*\/vendors~[^"']+\.js)["']/gi,
             /["']([^"']*\/commons~[^"']+\.js)["']/gi,
-            // Webpack 5 chunk 模式
-            /["']([^"']*\/[a-z]+\.[a-f0-9]+\.chunk\.js)["']/gi
+            /["']([^"']*\/[a-z]+\.[a-f0-9]+\.chunk\.js)["']/gi,
+            /["']((?:static\/)?js\/\d+\.[a-f0-9]+\.js)["']/gi,
+            /["']((?:assets\/)?js\/chunk-[a-f0-9]+\.js)["']/gi
         ];
         
         for (const pattern of patterns) {
             let match;
             while ((match = pattern.exec(code)) !== null) {
                 const path = match[1];
-                references.push(this._createReference(path, sourceUrl, 'js', 'async'));
-            }
-        }
-        
-        return references;
-    }
-
-    /**
-     * 从 Webpack Runtime 中提取 chunk 引用
-     * @private
-     */
-    _extractFromRuntime(code, sourceUrl) {
-        const references = [];
-        
-        // 检测是否为 Webpack Runtime 代码
-        if (!code.includes('__webpack_require__') && !code.includes('webpackJsonp')) {
-            return references;
-        }
-        
-        // 提取 chunk 映射对象
-        // 模式: {0: "chunk-hash", 1: "chunk-hash2", ...}
-        const chunkMapPattern = /\{(\s*\d+\s*:\s*["'][a-f0-9]+["']\s*,?\s*)+\}/g;
-        let match;
-        
-        while ((match = chunkMapPattern.exec(code)) !== null) {
-            const mapStr = match[0];
-            // 解析映射
-            const itemPattern = /(\d+)\s*:\s*["']([a-f0-9]+)["']/g;
-            let itemMatch;
-            
-            while ((itemMatch = itemPattern.exec(mapStr)) !== null) {
-                const chunkId = itemMatch[1];
-                const hash = itemMatch[2];
+                const fullUrl = this._buildFullUrl(path, sourceUrl);
                 
-                // 尝试构建 chunk URL
-                const chunkUrl = this._buildChunkUrl(chunkId, hash);
-                if (chunkUrl) {
-                    references.push(this._createReference(chunkUrl, sourceUrl, 'runtime', 'async', chunkId));
+                if (fullUrl && !this.loadedFiles.has(fullUrl) && !this.chunks.has(fullUrl)) {
+                    references.push(this._createReference(fullUrl, sourceUrl, 'js-string', 'async'));
                 }
             }
-        }
-        
-        // 提取 chunkFilename 模式
-        const filenamePattern = /chunkFilename:\s*["']([^"']+)["']/;
-        const filenameMatch = code.match(filenamePattern);
-        if (filenameMatch) {
-            this.chunkPatterns.push(filenameMatch[1]);
         }
         
         return references;
@@ -167,75 +325,54 @@ class ChunkAnalyzer {
 
     /**
      * 创建 chunk 引用对象
-     * @private
      */
-    _createReference(path, sourceUrl, source, type, chunkId = null) {
-        const url = this._resolveUrl(path, sourceUrl);
-        
+    _createReference(url, sourceUrl, source, type, chunkId = null) {
         return {
             url: url,
-            originalPath: path,
+            originalPath: url,
             type: type,
-            chunkId: chunkId || this._extractChunkId(path),
+            chunkId: chunkId || this._extractChunkId(url),
             source: source,
-            pattern: this._detectPattern(path),
+            pattern: this._detectPattern(url),
             discovered: Date.now()
         };
     }
 
     /**
-     * 解析 URL
-     * @private
-     */
-    _resolveUrl(path, baseUrl) {
-        try {
-            if (!path) return null;
-            
-            // 已经是绝对路径
-            if (path.startsWith('http://') || path.startsWith('https://')) {
-                return path;
-            }
-            
-            // 协议相对路径
-            if (path.startsWith('//')) {
-                const protocol = new URL(baseUrl || this.baseUrl).protocol;
-                return protocol + path;
-            }
-            
-            // 使用 publicPath
-            if (this.publicPath && !path.startsWith('/')) {
-                return new URL(this.publicPath + path, baseUrl || this.baseUrl).href;
-            }
-            
-            return new URL(path, baseUrl || this.baseUrl).href;
-        } catch (error) {
-            return path;
-        }
-    }
-
-    /**
      * 判断是否为 chunk 文件
-     * @private
      */
     _isChunkFile(path) {
         if (!path) return false;
         
         const fileName = path.split('/').pop().toLowerCase();
         
-        // 排除明显的非 chunk 文件
-        if (fileName.includes('vendor') && !fileName.includes('vendors~')) {
-            return false;
+        const excludePatterns = [
+            /^vendor\./,
+            /^polyfill/,
+            /^runtime/,
+            /^manifest/,
+            /\.min\.js$/,
+            /jquery/i,
+            /react\.production/,
+            /vue\.runtime/
+        ];
+        
+        for (const pattern of excludePatterns) {
+            if (pattern.test(fileName)) {
+                return false;
+            }
         }
         
-        // chunk 文件特征
         const chunkPatterns = [
             /^\d+\.[a-f0-9]+\.js$/,
+            /^\d+\.[a-f0-9]+\.chunk\.js$/,
             /^chunk\.\d+\.[a-f0-9]+\.js$/,
+            /^chunk-[a-f0-9]+\.js$/,
             /^[a-z]+\.[a-f0-9]+\.chunk\.js$/,
             /^vendors~.*\.js$/,
             /^commons~.*\.js$/,
             /^\d+\.bundle\.js$/,
-            /^chunk-[a-f0-9]+\.js$/
+            /^[a-z]+-[a-f0-9]+\.js$/
         ];
         
         return chunkPatterns.some(pattern => pattern.test(fileName));
@@ -243,18 +380,22 @@ class ChunkAnalyzer {
 
     /**
      * 提取 chunk ID
-     * @private
      */
     _extractChunkId(path) {
+        if (!path) return null;
+        
         const fileName = path.split('/').pop();
         
-        // 数字 ID
         const numMatch = fileName.match(/^(\d+)\./);
         if (numMatch) {
             return parseInt(numMatch[1], 10);
         }
         
-        // 命名 chunk
+        const chunkMatch = fileName.match(/^chunk[.-]([a-f0-9]+)/i);
+        if (chunkMatch) {
+            return chunkMatch[1];
+        }
+        
         const namedMatch = fileName.match(/^([a-z]+(?:~[a-z]+)*)\./i);
         if (namedMatch) {
             return namedMatch[1];
@@ -265,13 +406,17 @@ class ChunkAnalyzer {
 
     /**
      * 检测命名模式
-     * @private
      */
     _detectPattern(path) {
+        if (!path) return null;
+        
         const fileName = path.split('/').pop();
         
         if (/^\d+\.[a-f0-9]+\.js$/.test(fileName)) {
             return '[id].[hash].js';
+        }
+        if (/^\d+\.[a-f0-9]+\.chunk\.js$/.test(fileName)) {
+            return '[id].[hash].chunk.js';
         }
         if (/^[a-z]+\.[a-f0-9]+\.chunk\.js$/i.test(fileName)) {
             return '[name].[hash].chunk.js';
@@ -279,35 +424,20 @@ class ChunkAnalyzer {
         if (/^vendors~.*\.js$/.test(fileName)) {
             return 'vendors~[name].js';
         }
+        if (/^chunk-[a-f0-9]+\.js$/.test(fileName)) {
+            return 'chunk-[hash].js';
+        }
         
         return null;
     }
 
     /**
-     * 构建 chunk URL
-     * @private
-     */
-    _buildChunkUrl(chunkId, hash) {
-        // 使用检测到的模式或默认模式
-        const pattern = this.chunkPatterns[0] || '[id].[hash].js';
-        
-        let url = pattern
-            .replace('[id]', chunkId)
-            .replace('[chunkhash]', hash)
-            .replace('[hash]', hash)
-            .replace('[contenthash]', hash);
-        
-        return this.publicPath + url;
-    }
-
-    /**
      * 去重引用
-     * @private
      */
     _deduplicateReferences(references) {
         const seen = new Set();
         return references.filter(ref => {
-            if (seen.has(ref.url)) {
+            if (!ref.url || seen.has(ref.url)) {
                 return false;
             }
             seen.add(ref.url);
@@ -315,155 +445,40 @@ class ChunkAnalyzer {
         });
     }
 
-
-    /**
-     * 枚举可能的 chunk 文件
-     * @param {string} pattern - 命名模式
-     * @param {Object} range - 枚举范围 {start, end}
-     * @returns {string[]} 可能的 chunk URL 列表
-     */
-    enumerateChunks(pattern, range = { start: 0, end: 20 }) {
-        const urls = [];
-        
-        try {
-            const { start, end } = range;
-            const limit = Math.min(end - start, this.maxEnumeration);
-            
-            for (let i = start; i < start + limit; i++) {
-                // 替换模式中的占位符
-                let url = pattern
-                    .replace('[id]', i.toString())
-                    .replace('[name]', i.toString());
-                
-                // 如果模式包含 hash，使用通配符或跳过
-                if (url.includes('[hash]') || url.includes('[chunkhash]')) {
-                    // 无法枚举带 hash 的文件
-                    continue;
-                }
-                
-                urls.push(this._resolveUrl(url, this.baseUrl));
-            }
-            
-            if (this.debug) {
-                console.log('[ChunkAnalyzer] 枚举 chunk:', urls.length);
-            }
-            
-        } catch (error) {
-            console.error('[ChunkAnalyzer] 枚举 chunk 失败:', error);
-        }
-        
-        return urls;
-    }
-
-    /**
-     * 分析动态导入
-     * @param {Object} ast - AST 对象
-     * @returns {DynamicImport[]} 动态导入列表
-     */
-    analyzeDynamicImports(ast) {
-        const imports = [];
-        
-        try {
-            // 简单的 AST 遍历查找 import() 调用
-            this._walkAst(ast, (node) => {
-                // import() 表达式
-                if (node.type === 'ImportExpression' || 
-                    (node.type === 'CallExpression' && node.callee && node.callee.type === 'Import')) {
-                    const source = node.source;
-                    if (source && source.type === 'Literal' && source.value) {
-                        imports.push({
-                            path: source.value,
-                            type: 'dynamic',
-                            location: node.loc
-                        });
-                    }
-                }
-                
-                // __webpack_require__.e() 调用
-                if (node.type === 'CallExpression' && 
-                    node.callee && 
-                    node.callee.type === 'MemberExpression') {
-                    const callee = node.callee;
-                    if (callee.object && 
-                        callee.object.name === '__webpack_require__' && 
-                        callee.property && 
-                        callee.property.name === 'e') {
-                        const arg = node.arguments[0];
-                        if (arg) {
-                            imports.push({
-                                chunkId: arg.value || arg.name,
-                                type: 'webpack_require_e',
-                                location: node.loc
-                            });
-                        }
-                    }
-                }
-            });
-            
-        } catch (error) {
-            console.error('[ChunkAnalyzer] 分析动态导入失败:', error);
-        }
-        
-        return imports;
-    }
-
-    /**
-     * 简单的 AST 遍历
-     * @private
-     */
-    _walkAst(node, callback) {
-        if (!node || typeof node !== 'object') return;
-        
-        callback(node);
-        
-        for (const key of Object.keys(node)) {
-            const child = node[key];
-            if (Array.isArray(child)) {
-                for (const item of child) {
-                    this._walkAst(item, callback);
-                }
-            } else if (child && typeof child === 'object') {
-                this._walkAst(child, callback);
-            }
-        }
-    }
-
-    /**
-     * 获取所有 chunk URL
-     * @returns {string[]} chunk URL 列表
-     */
     getAllChunkUrls() {
         return Array.from(this.chunks.keys());
     }
 
-    /**
-     * 获取所有 chunk 引用
-     * @returns {ChunkReference[]} chunk 引用列表
-     */
     getAllChunkReferences() {
         return Array.from(this.chunks.values());
     }
 
-    /**
-     * 清空缓存
-     */
-    clear() {
-        this.chunks.clear();
-        this.chunkPatterns = [];
+    getLoadedFiles() {
+        return Array.from(this.loadedFiles);
     }
 
-    /**
-     * 设置 publicPath
-     * @param {string} publicPath - publicPath 值
-     */
+    getUnloadedFiles() {
+        const unloaded = [];
+        for (const url of this.chunks.keys()) {
+            if (!this.loadedFiles.has(url)) {
+                unloaded.push(url);
+            }
+        }
+        return unloaded;
+    }
+
+    clear() {
+        this.chunks.clear();
+        this.loadedFiles.clear();
+        this.unloadedFiles.clear();
+        this.chunkPatterns = [];
+        this.detectedBasePath = '';
+    }
+
     setPublicPath(publicPath) {
         this.publicPath = publicPath || '';
     }
 
-    /**
-     * 设置基础 URL
-     * @param {string} baseUrl - 基础 URL
-     */
     setBaseUrl(baseUrl) {
         this.baseUrl = baseUrl || '';
     }
