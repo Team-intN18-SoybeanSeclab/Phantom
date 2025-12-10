@@ -194,9 +194,8 @@ class ApiTester {
             'customApis': '自定义API路径',
             'absoluteApis': '绝对路径API',
             'relativeApis': '相对路径API',
+            'vueRoutes': 'Vue路由',
             'jsFiles': 'JS文件',
-            'cssFiles': 'CSS文件',
-            'images': '图片文件',
             'urls': '完整URL',
             'domains': '域名',
             'paths': '路径'
@@ -208,7 +207,7 @@ class ApiTester {
     isTestableCategory(categoryKey) {
         const testableCategories = [
             'customApis', 'absoluteApis', 'relativeApis', 'jsFiles', 'cssFiles', 
-            'images', 'urls', 'paths'
+            'images', 'urls', 'paths', 'vueRoutes'
         ];
         return testableCategories.includes(categoryKey);
     }
@@ -423,8 +422,9 @@ class ApiTester {
             let url = item;
             
             // 修复：如果item是对象，提取value属性
+            // 🔥 优先使用 fullUrl（用于 Vue 路由等需要完整 URL 的场景）
             if (typeof item === 'object' && item !== null) {
-                url = item.value || item.url || item;
+                url = item.fullUrl || item.value || item.url || item;
             }
             
             // 修复：确保url是字符串类型
@@ -471,6 +471,17 @@ class ApiTester {
                             url = baseUrl + url;
                         } else {
                             url = baseUrl + '/' + url;
+                        }
+                    }
+                    break;
+                    
+                // 🔥 Vue 路由：已经是完整 URL，直接使用
+                case 'vueRoutes':
+                    // Vue 路由的 fullUrl 已经是完整的 URL，不需要额外处理
+                    // 如果不是完整 URL，尝试构建
+                    if (!url.startsWith('http')) {
+                        if (baseUrl) {
+                            url = baseUrl + (url.startsWith('/') ? '' : '/') + url;
                         }
                     }
                     break;

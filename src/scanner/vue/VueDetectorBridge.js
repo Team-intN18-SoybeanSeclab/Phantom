@@ -174,16 +174,45 @@
                 errors: vueResult.errors || []
             };
 
+            // 🔥 获取当前页面的基础 URL 用于构建完整路由 URL
+            const baseUrl = window.location.origin;
+            const routerBase = vueResult.routerBase || '';
+            // 检测是否使用 hash 模式（Vue Router 默认）
+            const isHashMode = window.location.hash.startsWith('#/') || 
+                              (vueResult.routerMode === 'hash') ||
+                              document.querySelector('a[href^="#/"]') !== null;
+
             // 转换路由为 Phantom 格式
             if (vueResult.allRoutes && Array.isArray(vueResult.allRoutes)) {
-                phantomResult.routes = vueResult.allRoutes.map(route => ({
-                    path: route.path || route.fullPath || '',
-                    name: route.name || '',
-                    type: 'vue-route',
-                    hasAuth: route.hasAuth || false,
-                    meta: route.meta || {},
-                    source: 'vue-router'
-                }));
+                phantomResult.routes = vueResult.allRoutes.map(route => {
+                    const routePath = route.path || route.fullPath || '';
+                    
+                    // 🔥 构建完整的 URL
+                    let fullUrl = '';
+                    if (routePath.startsWith('http://') || routePath.startsWith('https://')) {
+                        // 已经是完整 URL
+                        fullUrl = routePath;
+                    } else if (isHashMode) {
+                        // Hash 模式: https://example.com/#/path
+                        fullUrl = baseUrl + routerBase + '/#' + routePath;
+                    } else {
+                        // History 模式: https://example.com/path
+                        fullUrl = baseUrl + routerBase + routePath;
+                    }
+                    
+                    return {
+                        path: routePath,
+                        fullUrl: fullUrl,
+                        value: fullUrl, // 🔥 添加 value 字段用于显示和复制
+                        name: route.name || '',
+                        type: 'vue-route',
+                        hasAuth: route.hasAuth || false,
+                        meta: route.meta || {},
+                        source: 'vue-router',
+                        sourceUrl: window.location.href,
+                        extractedAt: new Date().toISOString()
+                    };
+                });
 
                 // 识别敏感路由
                 phantomResult.sensitiveRoutes = this._identifySensitiveRoutes(phantomResult.routes);

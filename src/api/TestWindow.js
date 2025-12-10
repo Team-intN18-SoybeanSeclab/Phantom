@@ -76,8 +76,6 @@ class TestWindow {
             'absoluteApis': '绝对路径API',
             'relativeApis': '相对路径API',
             'jsFiles': 'JS文件',
-            'cssFiles': 'CSS文件',
-            'images': '图片文件',
             'urls': '完整URL',
             'domains': '域名',
             'paths': '路径'

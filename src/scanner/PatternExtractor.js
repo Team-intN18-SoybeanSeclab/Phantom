@@ -347,11 +347,34 @@ class PatternExtractor {
             return false;
         }
         
-        // 移除查询参数和锚点
-        const cleanUrl = url.split('?')[0].split('#')[0].toLowerCase();
+        // 🔥 增强清理：移除引号、查询参数、锚点和尾部特殊字符
+        let cleanUrl = url
+            .replace(/^["'`]+|["'`]+$/g, '')  // 移除首尾引号
+            .split('?')[0]
+            .split('#')[0]
+            .replace(/[)"'\s]+$/g, '')  // 移除尾部的括号、引号、空格
+            .toLowerCase()
+            .trim();
         
         // 检查是否以静态文件扩展名结尾
-        return this.staticFileExtensions.some(ext => cleanUrl.endsWith(ext));
+        if (this.staticFileExtensions.some(ext => cleanUrl.endsWith(ext))) {
+            return true;
+        }
+        
+        // 🔥 增强检测：使用正则匹配常见静态资源模式
+        const staticPatterns = [
+            /\.(png|jpg|jpeg|gif|bmp|webp|svg|ico|tiff?|avif)(\?.*)?$/i,  // 图片
+            /\.(css|scss|sass|less|styl)(\?.*)?$/i,  // 样式
+            /\.(js|jsx|ts|tsx|mjs|cjs|vue|coffee)(\?.*)?$/i,  // 脚本
+            /\.(woff2?|ttf|otf|eot|font)(\?.*)?$/i,  // 字体
+            /\.(mp3|wav|ogg|m4a|aac|flac|wma)(\?.*)?$/i,  // 音频
+            /\.(mp4|avi|mov|wmv|flv|webm|mkv|swf|m4v)(\?.*)?$/i,  // 视频
+            /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|tar|gz)(\?.*)?$/i,  // 文档/压缩
+            /\.(map|json\.map|js\.map|css\.map)$/i,  // Source maps
+            /\/[^/]+\.(png|jpg|jpeg|gif|svg|ico|webp)[^a-zA-Z0-9]/i,  // 路径中包含图片扩展名
+        ];
+        
+        return staticPatterns.some(pattern => pattern.test(cleanUrl));
     }
 
     /**
@@ -395,6 +418,191 @@ class PatternExtractor {
         
         const cleanUrl = url.split('?')[0].split('#')[0].toLowerCase();
         return cleanUrl.endsWith('.css') || cleanUrl.includes('.css?');
+    }
+
+    /**
+     * 🔥 检查路径是否为静态资源路径（增强版）
+     * 用于过滤相对路径中的静态资源文件
+     * @param {string} path - 要检查的路径
+     * @returns {boolean} 是否为静态资源路径
+     */
+    isStaticResourcePath(path) {
+        if (!path || typeof path !== 'string') {
+            return false;
+        }
+        
+        // 清理路径：移除引号、空格等
+        let cleanPath = path
+            .replace(/^["'`]+|["'`]+$/g, '')  // 移除首尾引号
+            .replace(/[)"'\s]+$/g, '')  // 移除尾部特殊字符
+            .trim();
+        
+        // 🔥 静态资源文件扩展名正则（更全面）
+        const staticExtensionPattern = /\.(png|jpg|jpeg|gif|bmp|webp|svg|ico|tiff?|avif|heic|heif|raw|psd|ai|eps|pdf|doc|docx|xls|xlsx|ppt|pptx|css|scss|sass|less|styl|js|jsx|ts|tsx|mjs|cjs|vue|coffee|woff2?|ttf|otf|eot|font|mp3|wav|ogg|m4a|aac|flac|wma|mp4|avi|mov|wmv|flv|webm|mkv|swf|m4v|3gp|zip|rar|7z|tar|gz|bz2|xz|map|json\.map|js\.map|css\.map)(\?[^/]*)?$/i;
+        
+        if (staticExtensionPattern.test(cleanPath)) {
+            return true;
+        }
+        
+        // 🔥 检查路径中是否包含常见静态资源目录
+        const staticDirPatterns = [
+            /\/images?\//i,
+            /\/img\//i,
+            /\/icons?\//i,
+            /\/assets?\//i,
+            /\/static\//i,
+            /\/media\//i,
+            /\/uploads?\//i,
+            /\/files?\//i,
+            /\/fonts?\//i,
+            /\/styles?\//i,
+            /\/css\//i,
+            /\/scripts?\//i,
+            /\/vendor\//i,
+            /\/lib\//i,
+            /\/dist\//i,
+            /\/build\//i,
+            /\/public\//i,
+            /\/resources?\//i,
+        ];
+        
+        // 如果路径包含静态资源目录且以静态文件扩展名结尾
+        const hasStaticDir = staticDirPatterns.some(pattern => pattern.test(cleanPath));
+        const hasStaticExt = /\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|woff2?|ttf|mp3|mp4)(\?.*)?$/i.test(cleanPath);
+        
+        if (hasStaticDir && hasStaticExt) {
+            return true;
+        }
+        
+        // 🔥 检查是否是纯静态资源文件名（无路径分隔符的情况）
+        const pureStaticFilePattern = /^[a-zA-Z0-9_-]+\.(png|jpg|jpeg|gif|svg|ico|webp|css|js|woff2?|ttf|mp3|mp4)$/i;
+        if (pureStaticFilePattern.test(cleanPath)) {
+            return true;
+        }
+        
+        // 🔥 检查路径是否以静态资源扩展名结尾（带查询参数的情况）
+        const extWithQueryPattern = /\.(png|jpg|jpeg|gif|svg|ico|webp|bmp|tiff?)\?/i;
+        if (extWithQueryPattern.test(cleanPath)) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    /**
+     * 🔥 检查内容是否为 CSS 样式代码（用于过滤误识别的敏感凭据）
+     * @param {string} text - 要检查的文本
+     * @returns {boolean} 是否为 CSS 样式代码
+     */
+    isCssStyleCode(text) {
+        if (!text || typeof text !== 'string') {
+            return false;
+        }
+        
+        const cleanText = text.trim().toLowerCase();
+        
+        // 🔥 CSS 颜色值模式
+        const cssColorPatterns = [
+            /^rgba?\s*\(\s*\d+/i,                    // rgba(0, 0, 0 或 rgb(255, 255, 255
+            /^hsla?\s*\(\s*\d+/i,                    // hsla(0, 0%, 0% 或 hsl(360, 100%, 50%
+            /^#[0-9a-f]{3,8}$/i,                     // #fff, #ffffff, #ffffffff
+            /rgba?\s*\([^)]+\)\s*(solid|dashed|dotted|double|groove|ridge|inset|outset)?/i,  // rgba(...) solid
+            /\d+px\s+rgba?\s*\(/i,                   // 1px rgba(
+            /\d+(px|em|rem|%|vh|vw)\s+rgba?\s*\(/i,  // 带单位的值后跟 rgba
+        ];
+        
+        // 🔥 CSS 属性值模式
+        const cssPropertyPatterns = [
+            /^\d+(px|em|rem|%|vh|vw|vmin|vmax|ch|ex|pt|pc|in|cm|mm)\s/i,  // 带单位的数值
+            /^(solid|dashed|dotted|double|groove|ridge|inset|outset|none|hidden)$/i,  // 边框样式
+            /^(default|pointer|crosshair|move|text|wait|help|not-allowed|grab|grabbing)$/i,  // 光标样式
+            /^(block|inline|inline-block|flex|grid|none|table|list-item)$/i,  // display 值
+            /^(absolute|relative|fixed|sticky|static)$/i,  // position 值
+            /^(left|right|center|justify|start|end)$/i,  // 对齐值
+            /^(top|bottom|left|right|center|middle|baseline)$/i,  // 位置值
+            /^(bold|normal|lighter|bolder|\d{3})$/i,  // font-weight 值
+            /^(italic|oblique|normal)$/i,  // font-style 值
+            /^(uppercase|lowercase|capitalize|none)$/i,  // text-transform 值
+            /^(underline|overline|line-through|none)$/i,  // text-decoration 值
+            /^(visible|hidden|scroll|auto|clip)$/i,  // overflow 值
+            /^(wrap|nowrap|pre|pre-wrap|pre-line|break-spaces)$/i,  // white-space 值
+            /^(cover|contain|auto|\d+%|\d+px)$/i,  // background-size 值
+            /^(repeat|no-repeat|repeat-x|repeat-y|space|round)$/i,  // background-repeat 值
+            /^(border-box|content-box|padding-box)$/i,  // box-sizing 值
+            /^(ease|linear|ease-in|ease-out|ease-in-out)$/i,  // transition-timing-function 值
+            /^(row|column|row-reverse|column-reverse)$/i,  // flex-direction 值
+            /^(stretch|flex-start|flex-end|center|baseline|space-between|space-around|space-evenly)$/i,  // flex 对齐值
+        ];
+        
+        // 🔥 CSS 复合值模式（如 "1px rgba(0,0,0,.9) solid"）
+        const cssCompoundPatterns = [
+            /^\d+(px|em|rem)?\s+(rgba?\s*\([^)]+\)|#[0-9a-f]{3,8})\s+(solid|dashed|dotted|double|none)/i,  // border 值
+            /^(rgba?\s*\([^)]+\)|#[0-9a-f]{3,8})\s+\d+(px|em|rem)/i,  // 颜色 + 尺寸
+            /^\d+(px|em|rem|%)\s+\d+(px|em|rem|%)/i,  // 多个尺寸值
+            /^(inset\s+)?\d+(px|em|rem)\s+\d+(px|em|rem)\s+\d+(px|em|rem)/i,  // box-shadow 值
+            /^url\s*\([^)]+\)/i,  // url() 函数
+            /^linear-gradient\s*\(/i,  // 渐变
+            /^radial-gradient\s*\(/i,  // 径向渐变
+            /^(nav|dot|round|index|indexes)$/i,  // 常见 CSS 类名/ID
+        ];
+        
+        // 🔥 CSS 特殊关键字
+        const cssKeywords = [
+            'default', 'inherit', 'initial', 'unset', 'revert',
+            'auto', 'none', 'normal', 'transparent',
+            'solid', 'dashed', 'dotted', 'double',
+            'block', 'inline', 'flex', 'grid',
+            'absolute', 'relative', 'fixed', 'sticky',
+            'hidden', 'visible', 'scroll', 'clip',
+            'pointer', 'crosshair', 'move', 'text',
+            'bold', 'italic', 'underline',
+            'left', 'right', 'center', 'top', 'bottom',
+            'row', 'column', 'wrap', 'nowrap',
+            'ease', 'linear', 'ease-in', 'ease-out',
+            'cover', 'contain', 'repeat', 'no-repeat',
+            'border-box', 'content-box',
+            'nav', 'dot', 'round', 'index', 'indexes',
+            'navindexes', 'dotround', 'roundnav',
+        ];
+        
+        // 检查是否匹配 CSS 颜色模式
+        if (cssColorPatterns.some(pattern => pattern.test(cleanText))) {
+            return true;
+        }
+        
+        // 检查是否匹配 CSS 属性值模式
+        if (cssPropertyPatterns.some(pattern => pattern.test(cleanText))) {
+            return true;
+        }
+        
+        // 检查是否匹配 CSS 复合值模式
+        if (cssCompoundPatterns.some(pattern => pattern.test(cleanText))) {
+            return true;
+        }
+        
+        // 检查是否为 CSS 关键字
+        if (cssKeywords.includes(cleanText)) {
+            return true;
+        }
+        
+        // 🔥 检查是否包含典型的 CSS 值组合
+        // 如 "3331px rgba(0, 0, 0, .9) soliddefaultdotroundnavindexesrgba(255, 90, 95,0.9)1px rgba(255, 90, 95,0.9) solid"
+        const hasCssColorFunction = /rgba?\s*\([^)]+\)/i.test(cleanText);
+        const hasCssUnit = /\d+(px|em|rem|%|vh|vw)/i.test(cleanText);
+        const hasCssBorderStyle = /(solid|dashed|dotted|double|none)/i.test(cleanText);
+        
+        // 如果同时包含颜色函数和单位，很可能是 CSS 代码
+        if (hasCssColorFunction && (hasCssUnit || hasCssBorderStyle)) {
+            return true;
+        }
+        
+        // 🔥 检查是否是纯 CSS 关键字组合（无空格连接）
+        const cssKeywordCombination = /^(default|dot|round|nav|index|indexes|solid|dashed|pointer|block|flex|grid|auto|none|normal|hidden|visible)+$/i;
+        if (cssKeywordCombination.test(cleanText.replace(/\s+/g, ''))) {
+            return true;
+        }
+        
+        return false;
     }
 
     /**
@@ -737,6 +945,16 @@ class PatternExtractor {
             }
             // 新增：基于正则的二次过滤
             if (this.isFilteredByRegex(path)) {
+                return false;
+            }
+            
+            // 🔥 使用增强的静态资源路径检测
+            if (this.isStaticFile(path)) {
+                return false;
+            }
+            
+            // 🔥 使用专门的静态资源路径检测
+            if (this.isStaticResourcePath(path)) {
                 return false;
             }
             
@@ -1192,6 +1410,10 @@ class PatternExtractor {
                 else if (this.isFilteredByRegex(trimmedText)) {
                     shouldSkip = true;
                 }
+                // 🔥 过滤敏感凭据中的 CSS 样式代码
+                else if (patternKey === 'credentials' && this.isCssStyleCode(trimmedText)) {
+                    shouldSkip = true;
+                }
                 
                 if (!shouldSkip) {
                     // 🔥 对 Vue 文件去除引号
@@ -1350,6 +1572,10 @@ class PatternExtractor {
                     // 🔥 新增特殊处理：过滤相对路径API中的静态文件（应用绝对路径API的过滤模式）
                     else if (this.isStaticFile(processedApi)) {
                         //console.log(`🚫 [PatternExtractor] 相对路径API为静态文件，已过滤: "${processedApi}"`);
+                    }
+                    // 🔥 增强：使用专门的静态资源路径检测
+                    else if (this.isStaticResourcePath(processedApi)) {
+                        //console.log(`🚫 [PatternExtractor] 相对路径API为静态资源路径，已过滤: "${processedApi}"`);
                     }
                     // 🔥 新增特殊处理：过滤相对路径API中包含过滤内容类型的API
                     else if (this.shouldFilter(processedApi)) {
@@ -1967,6 +2193,12 @@ class PatternExtractor {
                                     // 🔥 新增特殊处理：过滤包含过滤内容类型的内容
                                     if (this.containsFilteredContentType(trimmedText)) {
                                         //console.log(`🚫 [PatternExtractor] ${patternKey} 包含过滤内容类型，已过滤: "${trimmedText}"`);
+                                        return;
+                                    }
+                                    
+                                    // 🔥 新增特殊处理：过滤敏感凭据中的 CSS 样式代码
+                                    if (patternKey === 'credentials' && this.isCssStyleCode(trimmedText)) {
+                                        //console.log(`🚫 [PatternExtractor] 敏感凭据为CSS样式代码，已过滤: "${trimmedText}"`);
                                         return;
                                     }
                                     

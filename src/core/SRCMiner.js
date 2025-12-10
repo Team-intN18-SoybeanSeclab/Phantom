@@ -314,15 +314,15 @@ class SRCMiner {
         
         // 添加有数据的分类
         const categories = [
-            { key: 'customApis', title: '🔧 自定义API路径' },
-            { key: 'absoluteApis', title: '🔗 绝对路径API' },
-            { key: 'relativeApis', title: '📁 相对路径API' },
-            { key: 'jsFiles', title: '📜 JS文件' },
-            { key: 'cssFiles', title: '🎨 CSS文件' },
-            { key: 'images', title: '🖼️ 图片文件' },
-            { key: 'urls', title: '🔗 完整URL' },
-            { key: 'domains', title: '🌐 域名' },
-            { key: 'paths', title: '📂 路径' }
+            { key: 'customApis', title: '自定义API路径' },
+            { key: 'absoluteApis', title: '绝对路径API' },
+            { key: 'relativeApis', title: '相对路径API' },
+            { key: 'jsFiles', title: 'JS文件' },
+            { key: 'cssFiles', title: 'CSS文件' },
+            { key: 'images', title: '图片文件' },
+            { key: 'urls', title: '完整URL' },
+            { key: 'domains', title: '域名' },
+            { key: 'paths', title: '路径' }
         ];
         
         categories.forEach(category => {

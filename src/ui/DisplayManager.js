@@ -28,6 +28,8 @@ class DisplayManager {
             { key: 'customApis', title: '自定义API路径', icon: '🔧' },
             { key: 'absoluteApis', title: '绝对路径API', icon: '/' },
             { key: 'relativeApis', title: '相对路径API', icon: '~' },
+            // Vue 路由放在相对路径下方
+            { key: 'vueRoutes', title: 'Vue路由', icon: 'Vue' },
             { key: 'modulePaths', title: '模块路径', icon: './' },
             { key: 'domains', title: '域名', icon: '🌐' },
             { key: 'subdomains', title: '子域名', icon: 'sub' },
@@ -61,9 +63,7 @@ class DisplayManager {
             { key: 'cookies', title: 'Cookie信息', icon: '🍪' },
             { key: 'idKeys', title: 'ID密钥', icon: '🔑' },
             { key: 'sensitiveKeywords', title: '敏感关键词', icon: '⚠️' },
-            { key: 'comments', title: '代码注释', icon: '<!--' },
-            // Vue 检测结果
-            { key: 'vueRoutes', title: 'Vue路由', icon: 'Vue' }
+            { key: 'comments', title: '代码注释', icon: '<!--' }
         ];
 
         // 动态加载自定义正则配置并添加到显示类别中 - 修复：支持对象和数组两种存储格式
@@ -323,8 +323,9 @@ class DisplayManager {
             let displayText = '';
             if (typeof item === 'object' && item !== null) {
                 // 如果是对象，尝试获取有意义的属性或转换为JSON
-                if (item.url || item.path || item.value || item.content || item.name) {
-                    displayText = item.url || item.path || item.value || item.content || item.name || JSON.stringify(item);
+                // 🔥 优先显示 fullUrl（用于 Vue 路由等需要完整 URL 的场景）
+                if (item.fullUrl || item.url || item.value || item.path || item.content || item.name) {
+                    displayText = item.fullUrl || item.url || item.value || item.path || item.content || item.name || JSON.stringify(item);
                 } else {
                     displayText = JSON.stringify(item);
                 }
@@ -352,10 +353,11 @@ class DisplayManager {
             
             itemDiv.addEventListener('click', () => {
                 // 🔥 修复：正确处理对象复制，避免[object Object]
+                // 🔥 优先复制 fullUrl（用于 Vue 路由等需要完整 URL 的场景）
                 let textToCopy = item;
                 if (typeof item === 'object' && item !== null) {
-                    if (item.url || item.path || item.value || item.content || item.name) {
-                        textToCopy = item.url || item.path || item.value || item.content || item.name || JSON.stringify(item);
+                    if (item.fullUrl || item.url || item.value || item.path || item.content || item.name) {
+                        textToCopy = item.fullUrl || item.url || item.value || item.path || item.content || item.name || JSON.stringify(item);
                     } else {
                         textToCopy = JSON.stringify(item);
                     }
@@ -485,10 +487,11 @@ class DisplayManager {
             itemDiv.className = 'result-item';
             
             // 🔥 修复：正确处理对象显示
+            // 🔥 优先显示 fullUrl（用于 Vue 路由等需要完整 URL 的场景）
             if (typeof item === 'object' && item !== null) {
                 // 如果是对象，尝试获取有意义的属性或转换为JSON
-                if (item.url || item.path || item.value || item.content || item.name) {
-                    itemDiv.textContent = item.url || item.path || item.value || item.content || item.name || JSON.stringify(item);
+                if (item.fullUrl || item.url || item.value || item.path || item.content || item.name) {
+                    itemDiv.textContent = item.fullUrl || item.url || item.value || item.path || item.content || item.name || JSON.stringify(item);
                 } else {
                     itemDiv.textContent = JSON.stringify(item);
                 }
@@ -629,11 +632,12 @@ class DisplayManager {
         if (!items || items.length === 0) return;
         
         // 🔥 修复：正确处理对象复制，避免[object Object]
+        // 🔥 优先复制 fullUrl（用于 Vue 路由等需要完整 URL 的场景）
         const processedItems = items.map(item => {
             if (typeof item === 'object' && item !== null) {
                 // 如果是对象，尝试获取有意义的属性或转换为JSON
-                if (item.url || item.path || item.value || item.content || item.name) {
-                    return item.url || item.path || item.value || item.content || item.name || JSON.stringify(item);
+                if (item.fullUrl || item.url || item.value || item.path || item.content || item.name) {
+                    return item.fullUrl || item.url || item.value || item.path || item.content || item.name || JSON.stringify(item);
                 } else {
                     return JSON.stringify(item);
                 }

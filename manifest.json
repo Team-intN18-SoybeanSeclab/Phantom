@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "幻影",
-  "version": "1.7.9",
+  "version": "1.8.0",
   "description": "专业的SRC漏洞挖掘辅助工具，自动提取页面中的敏感信息",
   "author": "Phantom&yihuo&Xuan8a1",
   

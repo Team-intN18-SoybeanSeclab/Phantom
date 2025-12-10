@@ -324,15 +324,14 @@ class ILoveYouTranslucent7 {
         
         // 添加有数据的分类
         const categories = [
-            { key: 'customApis', title: '🔧 自定义API路径' },
-            { key: 'absoluteApis', title: '🔗 绝对路径API' },
-            { key: 'relativeApis', title: '📁 相对路径API' },
-            { key: 'jsFiles', title: '📜 JS文件' },
-            { key: 'cssFiles', title: '🎨 CSS文件' },
-            { key: 'images', title: '🖼️ 图片文件' },
-            { key: 'urls', title: '🔗 完整URL' },
-            { key: 'domains', title: '🌐 域名' },
-            { key: 'paths', title: '📂 路径' }
+            { key: 'customApis', title: '自定义API路径' },
+            { key: 'absoluteApis', title: '绝对路径API' },
+            { key: 'relativeApis', title: '相对路径API' },
+            { key: 'vueRoutes', title: 'Vue路由' },
+            { key: 'jsFiles', title: 'JS文件' },
+            { key: 'urls', title: '完整URL' },
+            { key: 'domains', title: '域名' },
+            { key: 'paths', title: '路径' }
         ];
         
         categories.forEach(category => {
@@ -1334,7 +1333,7 @@ class ILoveYouTranslucent7 {
     }
 }
 
-const CURRENT_VERSION = 'v1.7.9'; // 请根据实际版本修改
+const CURRENT_VERSION = 'v1.8.0'; // 请根据实际版本修改
 
 function compareVersion(v1, v2) {
     const arr1 = v1.replace(/^v/, '').split('.').map(Number);
