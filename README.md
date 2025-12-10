@@ -354,21 +354,9 @@ const customSensitiveRegex = /password[=:]\s*[\'"]?([^\'"\s]+)/gi;
 <!-- ACKNOWLEDGMENTS -->
 ## 🙏 致谢
 
-<<<<<<< HEAD
 D3f4ultX、findsomething、SnowEyes、0xsdeo、hama、zeroqing
 
 隼目安全、知攻善防实验室、零羊Web、表哥带我
-=======
-### 核心贡献者
-- [Phantom](https://github.com/Attack-Phantom) - 项目发起人
-- [yihuo](https://github.com/yiyihuohuo) - 核心开发
-- [Xuan8a1](https://github.com/Xuan8a1) - 功能开发
-- [LamentXU](https://github.com/LamentXU123) - 测试与优化
-
-### 技术致谢
-+ 致谢个人/团体/工具：D3f4ultX、findsomething、SnowEyes、0xsdeo、hama、zeroqing
-+ 致谢媒体：隼目安全、知攻善防实验室、零羊Web、表哥带我
->>>>>>> 0eccaeb5911174bb562623a52be70f9cb400c10e
 
 ### 相关链接
 - 项目官网：[https://www.cn-fnst.top/](https://www.cn-fnst.top/)
@@ -384,11 +372,7 @@ D3f4ultX、findsomething、SnowEyes、0xsdeo、hama、zeroqing
 <!-- MARKDOWN LINKS & IMAGES -->
 [contributors-shield]: https://img.shields.io/github/contributors/Team-intN18-SoybeanSeclab/Phantom.svg?style=for-the-badge
 [contributors-url]: https://github.com/Team-intN18-SoybeanSeclab/Phantom/graphs/contributors
-<<<<<<< HEAD
-[forks-/hield]: https://img.shields.io/github/forks/Team-intN18-SoybeanSeclab/Phantom.svg?style=for-the-badge
-=======
 [forks-shield]: https://img.shields.io/github/forks/Team-intN18-SoybeanSeclab/Phantom.svg?style=for-the-badge
->>>>>>> 0eccaeb5911174bb562623a52be70f9cb400c10e
 [forks-url]: https://github.com/Team-intN18-SoybeanSeclab/Phantom/network/members
 [stars-shield]: https://img.shields.io/github/stars/Team-intN18-SoybeanSeclab/Phantom.svg?style=for-the-badge
 [stars-url]: https://github.com/Team-intN18-SoybeanSeclab/Phantom/stargazers
@@ -410,8 +394,4 @@ D3f4ultX、findsomething、SnowEyes、0xsdeo、hama、zeroqing
       <img src="https://img.shields.io/badge/🍴-Fork%20This%20Project-green" alt="Fork">
     </a>
   </p>
-<<<<<<< HEAD
 </div>
-=======
-</div>
->>>>>>> 0eccaeb5911174bb562623a52be70f9cb400c10e
