@@ -15,15 +15,15 @@ let scannedUrls        = new Set();
 let pendingUrls        = new Set();
 let urlContentCache    = new Map();
 let activeRequests     = 0;
-let maxConcurrency     = 4; // 默认值，会从扩展设置中读取
-let requestTimeout     = 3000; // 默认值，会从扩展设置中读取
+let maxConcurrency     = 2; // 🚀 降低默认并发数，避免系统过载
+let requestTimeout     = 5000; // 增加超时时间
 
 // 日志相关变量 - 优化版本
 let logEntries         = [];
-let maxLogEntries      = 100; // 减少到100条，避免内存占用
+let maxLogEntries      = 50; // 🚀 进一步减少到50条
 let logBuffer          = []; // 日志缓冲区
 let logFlushTimer      = null;
-const LOG_FLUSH_INTERVAL = 500; // 500ms批量刷新日志
+const LOG_FLUSH_INTERVAL = 1000; // 🚀 1秒批量刷新日志
 
 // 筛选器实例
 let apiFilter          = null;
@@ -35,15 +35,17 @@ let patternExtractor   = null;
 let updateQueue        = [];
 let isUpdating         = false;
 let lastUpdateTime     = 0;
-const UPDATE_THROTTLE  = 300; // 🚀 增加到300ms节流，减少更新频率
+const UPDATE_THROTTLE  = 1000; // 🚀 增加到1000ms节流，大幅减少更新频率
 let pendingResults     = {};
-let batchSize          = 15; // 🚀 增加批量处理大小
+let batchSize          = 50; // 🚀 增加批量处理大小到50
 let updateTimer        = null;
 let displayUpdateCount = 0;
+let lastLogTime        = 0; // 🚀 日志节流时间戳
+const LOG_THROTTLE     = 2000; // 🚀 日志节流间隔2秒
 
 // 🚀 内存管理相关变量
 let memoryCleanupTimer = null;
-const MEMORY_CLEANUP_INTERVAL = 30000; // 30秒清理一次内存
+const MEMORY_CLEANUP_INTERVAL = 15000; // 🚀 15秒清理一次内存，更频繁
 
 /**
  * 虚拟滚动列表组件：只渲染可视区域 + 上下缓冲行
@@ -386,21 +388,26 @@ function updateVirtualListAppend(elementId, newItems, options = {}) {
 
 // 🚀 内存清理函数
 function performMemoryCleanup() {
-    //console.log('🧹 执行内存清理...');
-    
-    // 清理URL内容缓存，只保留最近的50个
-    if (urlContentCache.size > 50) {
+    // 🚀 更激进的缓存清理，只保留最近的20个
+    if (urlContentCache.size > 20) {
         const entries = Array.from(urlContentCache.entries());
-        const toKeep = entries.slice(-50);
+        const toKeep = entries.slice(-20);
         urlContentCache.clear();
         toKeep.forEach(([key, value]) => urlContentCache.set(key, value));
-        //console.log(`🧹 清理URL缓存，保留 ${toKeep.length} 个条目`);
     }
     
     // 清理日志缓冲区
     if (logBuffer && logBuffer.length > 0) {
         flushLogBuffer();
     }
+    
+    // 🚀 清理待处理结果中的大数据
+    Object.keys(pendingResults).forEach(key => {
+        if (pendingResults[key] && pendingResults[key].size > 500) {
+            // 如果待处理结果过多，强制刷新
+            flushPendingResults();
+        }
+    });
     
     // 强制垃圾回收（如果可用）
     if (window.gc) {
@@ -896,6 +903,143 @@ function countResults(results) {
     );
 }
 
+// -------------------- 超大文件分块处理 --------------------
+/**
+ * 🚀 对超大文件进行分块处理，避免一次性处理导致卡顿
+ * @param {string} content - 文件内容
+ * @param {string} sourceUrl - 源URL
+ * @param {number} chunkSize - 每块大小
+ * @param {number} maxTotalSize - 最大处理总大小
+ * @returns {Object} 合并后的提取结果
+ */
+async function extractFromContentChunked(content, sourceUrl, chunkSize, maxTotalSize) {
+    // 初始化合并结果
+    const mergedResults = {
+        absoluteApis: new Set(),
+        relativeApis: new Set(),
+        jsFiles: new Set(),
+        cssFiles: new Set(),
+        images: new Set(),
+        urls: new Set(),
+        domains: new Set(),
+        emails: new Set(),
+        phoneNumbers: new Set(),
+        credentials: new Set(),
+        ipAddresses: new Set(),
+        paths: new Set(),
+        jwts: new Set(),
+        githubUrls: new Set(),
+        vueFiles: new Set(),
+        vueRoutes: new Set(),
+        companies: new Set(),
+        comments: new Set(),
+        idCards: new Set(),
+        bearerTokens: new Set(),
+        basicAuth: new Set(),
+        authHeaders: new Set(),
+        wechatAppIds: new Set(),
+        awsKeys: new Set(),
+        googleApiKeys: new Set(),
+        githubTokens: new Set(),
+        gitlabTokens: new Set(),
+        webhookUrls: new Set(),
+        cryptoUsage: new Set()
+    };
+    
+    // 限制处理的总大小
+    const contentToProcess = content.length > maxTotalSize ? content.substring(0, maxTotalSize) : content;
+    const totalChunks = Math.ceil(contentToProcess.length / chunkSize);
+    
+    console.log(`📦 [分块处理] 总大小: ${Math.round(contentToProcess.length/1024)}KB, 分${totalChunks}块处理`);
+    
+    // 分块处理
+    for (let i = 0; i < totalChunks; i++) {
+        const start = i * chunkSize;
+        // 🚀 智能分块：尝试在换行符或分号处断开，避免截断正则匹配
+        let end = Math.min(start + chunkSize, contentToProcess.length);
+        
+        if (end < contentToProcess.length) {
+            // 向后查找最近的换行符或分号（最多查找1000字符）
+            const searchEnd = Math.min(end + 1000, contentToProcess.length);
+            const searchRange = contentToProcess.substring(end, searchEnd);
+            
+            const newlineIndex = searchRange.indexOf('\n');
+            const semicolonIndex = searchRange.indexOf(';');
+            
+            if (newlineIndex !== -1 && newlineIndex < 500) {
+                end += newlineIndex + 1;
+            } else if (semicolonIndex !== -1 && semicolonIndex < 500) {
+                end += semicolonIndex + 1;
+            }
+        }
+        
+        const chunk = contentToProcess.substring(start, end);
+        
+        try {
+            // 处理当前块
+            const chunkResults = await patternExtractor.extractPatterns(chunk, sourceUrl);
+            
+            // 合并结果到总结果
+            if (chunkResults) {
+                Object.keys(chunkResults).forEach(key => {
+                    if (Array.isArray(chunkResults[key]) && chunkResults[key].length > 0) {
+                        if (!mergedResults[key]) {
+                            mergedResults[key] = new Set();
+                        }
+                        
+                        chunkResults[key].forEach(item => {
+                            const value = typeof item === 'object' ? item.value : item;
+                            if (value) {
+                                // 使用Set自动去重
+                                if (typeof item === 'object') {
+                                    // 检查是否已存在相同值
+                                    let exists = false;
+                                    for (const existing of mergedResults[key]) {
+                                        const existingValue = typeof existing === 'object' ? existing.value : existing;
+                                        if (existingValue === value) {
+                                            exists = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!exists) {
+                                        mergedResults[key].add(item);
+                                    }
+                                } else {
+                                    mergedResults[key].add(item);
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+            
+            // 🚀 每处理完一块，让出主线程
+            if (i < totalChunks - 1) {
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+            
+        } catch (error) {
+            console.warn(`⚠️ [分块处理] 第${i+1}块处理失败:`, error.message);
+        }
+    }
+    
+    // 转换Set为Array
+    const finalResults = {};
+    Object.keys(mergedResults).forEach(key => {
+        if (mergedResults[key] instanceof Set) {
+            finalResults[key] = Array.from(mergedResults[key]);
+        } else if (Array.isArray(mergedResults[key])) {
+            finalResults[key] = mergedResults[key];
+        } else {
+            finalResults[key] = [];
+        }
+    });
+    
+    console.log(`✅ [分块处理] 完成，提取到 ${countResults(finalResults)} 个数据项`);
+    
+    return finalResults;
+}
+
 // -------------------- 统一内容提取 --------------------
 async function extractFromContent(content, sourceUrl = 'unknown') {
     if (!patternExtractor || typeof patternExtractor.extractPatterns !== 'function') {
@@ -920,46 +1064,43 @@ async function extractFromContent(content, sourceUrl = 'unknown') {
         return await extractFromVueFile(content, sourceUrl);
     }
     
-    // 使用正则提取
-    let results = await patternExtractor.extractPatterns(content, sourceUrl);
-
-    // 检查是否为 JavaScript 文件，尝试使用 AST 提取
-    const isJsFile = sourceUrl.endsWith('.js') || 
-                     sourceUrl.includes('.js?') ||
-                     specialFileType === 'typescript' ||
-                     (content && (content.trim().startsWith('(function') || 
-                                  content.trim().startsWith('function') ||
-                                  content.includes('const ') ||
-                                  content.includes('let ') ||
-                                  content.includes('var ')));
+    // 🚀 超大文件分块处理
+    const CHUNK_SIZE = 200000; // 200KB per chunk
+    const MAX_TOTAL_SIZE = 1000000; // 最大处理1MB
     
-    // AST 提取
+    let results;
+    
+    if (content.length > CHUNK_SIZE) {
+        // 🚀 分块处理超大文件
+        console.log(`📦 [分块处理] 文件大小 ${Math.round(content.length/1024)}KB，启用分块处理`);
+        results = await extractFromContentChunked(content, sourceUrl, CHUNK_SIZE, MAX_TOTAL_SIZE);
+    } else {
+        // 小文件直接处理
+        results = await patternExtractor.extractPatterns(content, sourceUrl);
+    }
+
+    // 🚀 性能优化：只对小于100KB的JS文件进行AST提取
+    const astMaxSize = 100000;
+    const shouldTryAST = content.length < astMaxSize;
+    
+    // 检查是否为 JavaScript 文件，尝试使用 AST 提取
+    const isJsFile = shouldTryAST && (
+                     sourceUrl.endsWith('.js') || 
+                     sourceUrl.includes('.js?') ||
+                     specialFileType === 'typescript');
+    
+    // AST 提取 - 仅对小文件
     const astAvailable = window.astBridge && window.astBridge.isAvailable();
     
-    if (isJsFile) {
-        if (astAvailable) {
-            try {
-                console.log('🔍 [AST] 尝试 AST 提取:', sourceUrl.substring(0, 80));
-                const astResult = window.astBridge.extract(content, sourceUrl);
-                
-                if (astResult.success && astResult.detections && astResult.detections.length > 0) {
-                    // 合并 AST 提取结果
-                    results = mergeASTResults(results, astResult.detections, sourceUrl);
-                    console.log('✅ [AST] 提取成功，检测到', astResult.detections.length, '个敏感信息');
-                } else if (astResult.errors && astResult.errors.length > 0) {
-                    console.warn('⚠️ [AST] 提取有错误:', astResult.errors[0]?.message || astResult.errors[0]);
-                }
-            } catch (error) {
-                console.warn('❌ [AST] 提取异常:', error.message);
+    if (isJsFile && astAvailable) {
+        try {
+            const astResult = window.astBridge.extract(content, sourceUrl);
+            
+            if (astResult.success && astResult.detections && astResult.detections.length > 0) {
+                results = mergeASTResults(results, astResult.detections, sourceUrl);
             }
-        } else {
-            // 仅在首次遇到 JS 文件时输出警告
-            if (!window._astWarningShown) {
-                console.warn('⚠️ [AST] AST 系统不可用，仅使用正则提取');
-                console.warn('  - window.astBridge:', !!window.astBridge);
-                console.warn('  - isAvailable:', window.astBridge?.isAvailable?.());
-                window._astWarningShown = true;
-            }
+        } catch (error) {
+            // 静默处理AST错误
         }
     }
 
@@ -1577,12 +1718,21 @@ function performDisplayUpdate() {
     displayUpdateCount++;
     
     try {
-        // 使用 requestAnimationFrame 确保在下一帧更新
-        requestAnimationFrame(() => {
-            updateResultsDisplayVirtual();
-            updateStatusDisplay();
-            isUpdating = false;
-        });
+        // 🚀 使用 requestIdleCallback 在空闲时更新，避免阻塞主线程
+        const updateFn = () => {
+            try {
+                updateResultsDisplayVirtual();
+                updateStatusDisplay();
+            } finally {
+                isUpdating = false;
+            }
+        };
+        
+        if (typeof requestIdleCallback !== 'undefined') {
+            requestIdleCallback(updateFn, { timeout: 500 });
+        } else {
+            requestAnimationFrame(updateFn);
+        }
     } catch (error) {
         console.error('显示更新失败:', error);
         isUpdating = false;
@@ -2334,6 +2484,9 @@ async function startScan() {
     pendingUrls.clear();
     urlContentCache.clear();
     
+    // 🚀 启动内存清理定时器
+    startMemoryCleanup();
+    
     // 更新UI状态
     updateButtonStates();
     updateStatusDisplay();
@@ -2395,6 +2548,10 @@ function pauseScan() {
 function stopScan() {
     isScanRunning = false;
     isPaused = false;
+    
+    // 🚀 停止内存清理定时器
+    stopMemoryCleanup();
+    
     addLogEntry('⏹️ 用户手动停止扫描', 'warning');
     addLogEntry(`📊 停止时状态: 已扫描${scannedUrls.size}个URL，当前深度${currentDepth}`, 'info');
     updateButtonStates();
@@ -2594,47 +2751,25 @@ async function scanUrlBatch(urls, depth) {
                     }
                     
                         if (content) {
-                            // 🚀 性能优化：移除频繁的扫描日志
-                            // addLogEntry(`🔍 正在扫描: ${url}`, 'info');
-                            
                             // 提取信息
                             const extractedData = await extractFromContent(content, url);
                             const hasNewData = mergeResults(extractedData);
                             
-                            // 🔥 记录提取结果日志
-                            if (hasNewData) {
-                                const newDataCount = Object.values(extractedData).reduce((sum, arr) => sum + (arr?.length || 0), 0);
-                                addLogEntry(`✅ 从 ${url} 提取到 ${newDataCount} 个新数据项`, 'success');
-                            } else {
-                                addLogEntry(`ℹ️ 从 ${url} 未发现新数据`, 'info');
+                            // 🚀 性能优化：大幅减少显示更新频率
+                            if (hasNewData && processedCount % 20 === 0) {
+                                throttledUpdateDisplay();
                             }
                             
-                            // 🚀 性能优化：减少显示更新频率，只在批量处理时更新
-                            if (hasNewData) {
-                                // 每处理10个URL才更新一次显示
-                                if (processedCount % 10 === 0) {
-                                    throttledUpdateDisplay();
-                                }
-                            }
-                            
-                            // 收集新URL
-                            const discoveredUrls = await collectUrlsFromContent(content, scanConfig.baseUrl);
-                            if (discoveredUrls.length > 0) {
-                                addLogEntry(`🔗 从 ${url} 发现 ${discoveredUrls.length} 个新URL`, 'info');
-                            }
+                            // 🚀 性能优化：复用已提取的数据，避免重复提取
+                            const discoveredUrls = await collectUrlsFromContent(content, scanConfig.baseUrl, extractedData);
                             discoveredUrls.forEach(newUrl => newUrls.add(newUrl));
-                        } else {
-                            // 🔥 记录无内容的情况
-                            addLogEntry(`⚠️ ${url} 返回空内容或无法访问`, 'warning');
                         }
                     } catch (error) {
                         console.error(`扫描 ${url} 失败:`, error);
-                        // 🔥 添加错误日志记录
-                        addLogEntry(`❌ 扫描失败: ${url} - ${error.message}`, 'error');
                     } finally {
                         processedCount++;
-                        // 🚀 性能优化：减少进度更新频率，每5个URL更新一次
-                        if (processedCount % 5 === 0 || processedCount === totalUrls) {
+                        // 🚀 性能优化：大幅减少进度更新频率，每20个URL更新一次
+                        if (processedCount % 20 === 0 || processedCount === totalUrls) {
                             updateProgressDisplay(processedCount, totalUrls, `第 ${depth} 层扫描`);
                         }
                         activeWorkers.delete(workerPromise);
@@ -2648,9 +2783,14 @@ async function scanUrlBatch(urls, depth) {
                 await Promise.race(Array.from(activeWorkers));
             }
             
-            // 添加延迟，避免过快请求导致系统卡顿
+            // 🚀 添加更长延迟，避免过快请求导致系统卡顿
             if (activeWorkers.size >= maxConcurrency) {
-                await new Promise(resolve => setTimeout(resolve, 100)); // 🚀 增加到200ms延迟
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            
+            // 🚀 每处理一定数量URL后让出主线程
+            if (processedCount % 5 === 0) {
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
         }
     };
@@ -2684,8 +2824,6 @@ async function fetchUrlContent(url) {
         
         if (!response.ok) {
             console.warn(`HTTP ${response.status} for ${url}`);
-            // 🔥 添加HTTP错误日志
-            addLogEntry(`⚠️ HTTP ${response.status} - ${url}`, 'warning');
             return null;
         }
         
@@ -2697,22 +2835,14 @@ async function fetchUrlContent(url) {
             contentType.includes('application/octet-stream') ||
             contentType.includes('application/zip') ||
             contentType.includes('application/pdf')) {
-            // 🔥 添加内容类型过滤日志
-            addLogEntry(`🚫 跳过非文本内容 (${contentType}) - ${url}`, 'info');
             return null;
         }
         
         const text = await response.text();
-        // 🔥 添加成功获取内容的日志
-        const contentSize = text.length;
-        const sizeText = contentSize > 1024 ? `${Math.round(contentSize / 1024)}KB` : `${contentSize}B`;
-        addLogEntry(`📥 成功获取内容 (${sizeText}) - ${url}`, 'info');
         return text;
         
     } catch (error) {
         console.error(`无法访问 ${url}:`, error);
-        // 🔥 添加网络错误日志
-        addLogEntry(`❌ 网络错误: ${error.message} - ${url}`, 'error');
         return null;
     }
 }
@@ -2818,11 +2948,15 @@ async function collectSourceMapUrls(content, baseUrl, urls) {
 }
 
 // -------------------- 从内容收集URL --------------------
-async function collectUrlsFromContent(content, baseUrl) {
+// 🚀 性能优化：接受已提取的数据，避免重复提取
+async function collectUrlsFromContent(content, baseUrl, extractedData = null) {
     const urls = new Set();
     
     try {
-        const extractedData = await extractFromContent(content, baseUrl);
+        // 🚀 如果没有传入已提取的数据，才进行提取（但这种情况应该避免）
+        if (!extractedData) {
+            extractedData = await extractFromContent(content, baseUrl);
+        }
         
         // 收集JS文件
         if (scanConfig.scanJsFiles && extractedData.jsFiles) {
@@ -3087,6 +3221,9 @@ async function completeScan() {
     
     // 更新按钮状态
     updateButtonStates();
+    
+    // � 停化止内存清理定时器
+    stopMemoryCleanup();
     
     // 🔥 优化：清理内存和缓存
     setTimeout(() => {
@@ -3437,12 +3574,27 @@ function addLogEntry(message, type = 'info') {
     const logSection = document.getElementById('logSection');
     if (!logSection) return;
     
-    // 🚀 性能优化：只过滤最频繁的日志，保留重要信息
-    if (type === 'info' && (
-        message.includes('成功获取内容') ||
-        message.includes('跳过非文本内容')
-    )) {
-        return; // 只跳过这些最频繁的日志
+    // 🚀 性能优化：大幅过滤频繁的日志，只保留关键信息
+    if (type === 'info') {
+        // 过滤掉所有频繁的info日志，只保留层级开始/结束等关键信息
+        if (message.includes('成功获取内容') ||
+            message.includes('跳过非文本内容') ||
+            message.includes('未发现新数据') ||
+            message.includes('发现') ||
+            message.includes('提取到') ||
+            message.includes('扫描目标') ||
+            message.includes('准备第')) {
+            return;
+        }
+    }
+    
+    // 🚀 对warning类型也进行节流
+    if (type === 'warning') {
+        const now = Date.now();
+        if (now - lastLogTime < LOG_THROTTLE) {
+            return; // 节流期间跳过warning日志
+        }
+        lastLogTime = now;
     }
     
     if (!logEntries) {
@@ -3455,12 +3607,12 @@ function addLogEntry(message, type = 'info') {
     }
     logBuffer.push({ message, type, time: new Date().toLocaleTimeString() });
     
-    // 批量刷新日志（降低频率）
+    // 🚀 增加刷新间隔到1秒
     if (!logFlushTimer) {
         logFlushTimer = setTimeout(() => {
             flushLogBuffer();
             logFlushTimer = null;
-        }, LOG_FLUSH_INTERVAL);
+        }, 1000);
     }
 }
 

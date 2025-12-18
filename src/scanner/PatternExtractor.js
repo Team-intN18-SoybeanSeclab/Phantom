@@ -7,11 +7,11 @@ class PatternExtractor {
     constructor() {
         // === 性能优化配置 ===
         this.performanceConfig = {
-            maxMatchesPerPattern: 5000,     // 每个正则最大匹配数
+            maxMatchesPerPattern: 1000,     // 🚀 降低到1000，避免大量匹配导致卡顿
             chunkSize: 100000,              // 分块处理大小（字符）
             enableChunking: true,           // 是否启用分块处理
             cacheEnabled: true,             // 是否启用缓存
-            maxCacheSize: 50                // 最大缓存条目数
+            maxCacheSize: 30                // 🚀 降低缓存大小
         };
         
         // 结果缓存
@@ -1523,9 +1523,15 @@ class PatternExtractor {
                     matchCount++;
                 }
                 
-                // 防止无限循环
-                if (matchCount > 1000) {
-                    console.warn(`⚠️ [PatternExtractor] 绝对路径API匹配次数过多，停止匹配`);
+                // 🚀 性能优化：更严格的匹配限制
+                if (matchCount > 500) {
+                    console.warn(`⚠️ [PatternExtractor] 绝对路径API匹配次数过多(${matchCount})，停止匹配`);
+                    break;
+                }
+                
+                // 🚀 限制添加的结果数量
+                if (absoluteApiCount > 300) {
+                    console.warn(`⚠️ [PatternExtractor] 绝对路径API结果过多(${absoluteApiCount})，停止匹配`);
                     break;
                 }
                 
@@ -1588,9 +1594,15 @@ class PatternExtractor {
                     matchCount++;
                 }
                 
-                // 防止无限循环
-                if (matchCount > 1000) {
-                    console.warn(`⚠️ [PatternExtractor] 相对路径API匹配次数过多，停止匹配`);
+                // 🚀 性能优化：更严格的匹配限制
+                if (matchCount > 500) {
+                    console.warn(`⚠️ [PatternExtractor] 相对路径API匹配次数过多(${matchCount})，停止匹配`);
+                    break;
+                }
+                
+                // 🚀 限制添加的结果数量
+                if (relativeApiCount > 300) {
+                    console.warn(`⚠️ [PatternExtractor] 相对路径API结果过多(${relativeApiCount})，停止匹配`);
                     break;
                 }
                 
@@ -1697,7 +1709,18 @@ class PatternExtractor {
             let reclassifiedJsCount = 0;
             let reclassifiedCssCount = 0;
             
+            let totalUrlMatches = 0;
+            const maxUrlMatches = 500; // 🚀 限制URL匹配数量
+            
             while ((match = this.patterns.url.exec(processContent)) !== null) {
+                totalUrlMatches++;
+                
+                // 🚀 性能优化：限制匹配数量
+                if (totalUrlMatches > maxUrlMatches) {
+                    console.warn(`⚠️ [PatternExtractor] URL匹配次数过多(${totalUrlMatches})，停止匹配`);
+                    break;
+                }
+                
                 const url = match[0];
                 if (url) {
                     // 🔥 新增：检查是否为图片文件
@@ -2044,15 +2067,19 @@ class PatternExtractor {
      */
     async extractPatterns(content, sourceUrl = '') {
         try {
-            //console.log('🚀🚀🚀 [PatternExtractor] 统一化版本开始提取模式 - 强制日志！');
-            //console.log(`📊 [PatternExtractor] 内容长度: ${content.length} 字符`);
-            //console.log(`🌐 [PatternExtractor] 源URL: ${sourceUrl}`);
-            //console.log('🔍🔍🔍 [PatternExtractor] 这个方法被调用了！');
-            
             // 🔥 性能优化：配置已在扫描开始时加载，这里不再重复加载
             // 只有在配置确实未加载时才加载（首次调用的情况）
             if (!this.customPatternsLoaded && Object.keys(this.patterns).length === 0) {
                 await this.ensureCustomPatternsLoaded();
+            }
+            
+            // 🚀 超大内容保护：如果内容超过500KB，只处理前500KB
+            const MAX_CONTENT_SIZE = 500000;
+            const processContent = content.length > MAX_CONTENT_SIZE ? 
+                content.substring(0, MAX_CONTENT_SIZE) : content;
+            
+            if (content.length > MAX_CONTENT_SIZE) {
+                console.log(`⚠️ [PatternExtractor] 内容过大(${Math.round(content.length/1024)}KB)，截取前500KB处理`);
             }
             
             // 初始化结果对象，使用Set避免重复 - 修复：使用正确的键名
@@ -2094,11 +2121,6 @@ class PatternExtractor {
             
             //console.log('📦 [PatternExtractor] 结果对象初始化完成');
             //console.log('📊 [PatternExtractor] 当前可用的正则模式:', Object.keys(this.patterns));
-            
-            // 移除内容大小限制，处理完整内容
-            const processContent = content;
-            
-            //console.log(`📊 [PatternExtractor] 实际处理内容大小: ${processContent.length} 字符`);
             
             // 1. 提取API（特殊处理，因为可能有多个正则）
             this.extractAPIs(processContent, results);
