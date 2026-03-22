@@ -1372,7 +1372,7 @@ async function checkForUpdate() {
         const now = Date.now();
         if (lastShown && now - Number(lastShown) < 24 * 60 * 60 * 1000) return;
 
-        const res = await fetch('https://www.cn-fnst.top/huanying/');
+        const res = await fetch('https://www.hdsec.cn/huanying/');
         if (!res.ok) return;
         const releases = await res.json();
         if (!Array.isArray(releases) || releases.length === 0) return;
