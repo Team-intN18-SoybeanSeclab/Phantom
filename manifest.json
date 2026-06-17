@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "幻影",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "专业的SRC漏洞挖掘辅助工具，自动提取页面中的敏感信息",
   "author": "Phantom&yihuo&Xuan8a1",
   
@@ -29,9 +29,9 @@
     {
       "matches": ["<all_urls>"],
       "js": [
-        "filters/api-filter.js", 
-        "filters/domain-phone-filter.js", 
-        "filters/id-card-filter.js",
+        "filters/apifilter.js", 
+        "filters/domainfilter.js", 
+        "filters/idfilter.js",
         "src/scanner/PatternExtractor.js",
         "src/scanner/ContentExtractor.js",
         "libs/acorn.min.js",
@@ -79,19 +79,17 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "filters/api-filter.js", 
-        "filters/domain-phone-filter.js", 
-        "filters/id-card-filter.js",
+        "filters/apifilter.js", 
+        "filters/domainfilter.js", 
+        "filters/idfilter.js",
         "src/scanner/PatternExtractor.js",
         "src/scanner/ContentExtractor.js",
         "src/scanner/DeepScanWindow.js",
         "src/core/injector.js",
-        "test-results.html", 
-        "test-window.html", 
-        "deep-scan-window.html",
-        "src/api/test-window-script.js",
-        "src/scanner/deep-scan-window-script.js",
-        "deep-scan-fix-patch.js",
+        "testwin.html",
+        "deepscan.html",
+        "src/api/testwin.js",
+        "src/scanner/deepscan.js",
         "offscreen.html",
         "offscreen.js",
         "libs/acorn.min.js",
