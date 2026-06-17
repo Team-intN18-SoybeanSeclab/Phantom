@@ -1,6 +1,3 @@
-/**
- * 测试窗口管理器 - 负责创建和管理API测试窗口
- */
 class TestWindow {
     constructor() {
         this.testData = null;
@@ -13,7 +10,7 @@ class TestWindow {
         this.requestTimeout = 5000;
     }
 
-    // 创建测试窗口
+
     async createTestWindow(categoryKey, items, method, concurrency = 8, timeout = 5000, customHeaders = [], customBaseApiPaths = [], customDomains = []) {
 
         let baseUrl = '';
@@ -26,7 +23,7 @@ class TestWindow {
             console.error('获取当前页面URL失败:', error);
         }
 
-        // 准备测试配置数据
+
         const testConfig = {
             categoryKey: categoryKey,
             categoryTitle: this.getCategoryTitle(categoryKey),
@@ -40,20 +37,20 @@ class TestWindow {
             customDomains: customDomains
         };
 
-        // 将配置保存到chrome.storage，供测试窗口读取
+
         try {
             await chrome.storage.local.set({ 'testConfig': testConfig });
-            //console.log('测试配置已保存到storage:', testConfig);
+
         } catch (error) {
             console.error('保存测试配置失败:', error);
             throw new Error('保存测试配置失败: ' + error.message);
         }
 
         try {
-            // 使用扩展的真实页面而不是Blob URL
-            const testPageUrl = chrome.runtime.getURL('test-window.html');
-            
-            // 打开新窗口
+
+            const testPageUrl = chrome.runtime.getURL('testwin.html');
+
+
             const newWindow = await chrome.windows.create({
                 url: testPageUrl,
                 type: 'normal',
@@ -62,7 +59,7 @@ class TestWindow {
                 focused: true
             });
 
-            //console.log('测试窗口已创建:', newWindow.id);
+
             return newWindow;
         } catch (error) {
             console.error('创建测试窗口失败:', error);
@@ -70,7 +67,7 @@ class TestWindow {
         }
     }
 
-    // 获取分类标题
+
     getCategoryTitle(categoryKey) {
         const categoryTitles = {
             'absoluteApis': '绝对路径API',
@@ -83,7 +80,7 @@ class TestWindow {
         return categoryTitles[categoryKey] || categoryKey;
     }
 
-    // 获取脚本内容 - 直接返回JavaScript代码字符串，避免CSP问题
+
     getScriptContent() {
         return `
 // 测试窗口脚本 - 避免CSP问题
@@ -99,7 +96,7 @@ let requestTimeout = 5000;
 // 页面加载完成后的初始化
 function initializePage() {
     //console.log('页面加载完成，准备开始测试');
-    
+
     // 从data属性中读取测试配置
     const configElement = document.getElementById('testConfigData');
     if (!configElement) {
@@ -107,7 +104,7 @@ function initializePage() {
         document.getElementById('loadingDiv').innerHTML = '<div style="color: #ff4757;">错误: 找不到配置数据</div>';
         return;
     }
-    
+
     try {
         const configData = configElement.getAttribute('data-config');
         if (!configData) {
@@ -115,19 +112,19 @@ function initializePage() {
             document.getElementById('loadingDiv').innerHTML = '<div style="color: #ff4757;">错误: 配置数据为空</div>';
             return;
         }
-        
+
         testData = JSON.parse(decodeURIComponent(configData));
         maxConcurrency = testData.concurrency || 8;
         requestTimeout = testData.timeout || 5000;
-        
+
         //console.log('测试配置加载成功:', testData);
-        
+
     } catch (error) {
         console.error('解析配置数据失败:', error);
         document.getElementById('loadingDiv').innerHTML = '<div style="color: #ff4757;">错误: 解析配置数据失败 - ' + error.message + '</div>';
         return;
     }
-    
+
     // 添加事件监听器
     document.getElementById('startBtn').addEventListener('click', startTest);
     document.getElementById('pauseBtn').addEventListener('click', pauseTest);
@@ -135,34 +132,34 @@ function initializePage() {
     document.getElementById('clearBtn').addEventListener('click', clearResults);
     document.getElementById('statusFilter').addEventListener('change', filterResults);
     document.getElementById('statusCodeFilter').addEventListener('change', filterResults);
-    
+
     if (!testData || !testData.items || testData.items.length === 0) {
         console.error('测试数据无效');
         document.getElementById('loadingDiv').innerHTML = '<div style="color: #ff4757;">错误: 没有要测试的项目</div>';
         return;
     }
-    
+
     setTimeout(startTest, 1000);
 }
 
 // 开始测试
 async function startTest() {
     if (!testData || isTestRunning) return;
-    
+
     //console.log('开始测试，项目数:', testData.items.length);
-    
+
     isTestRunning = true;
     isPaused = false;
     currentIndex = 0;
     activeRequests = 0;
     testResults = [];
-    
+
     try {
         document.getElementById('startBtn').disabled = true;
         document.getElementById('pauseBtn').disabled = false;
         document.getElementById('loadingDiv').style.display = 'none';
         document.getElementById('resultsTable').style.display = 'table';
-        
+
         updateStatusBar();
         processNextBatch();
     } catch (error) {
@@ -181,20 +178,20 @@ function pauseTest() {
 // 处理下一批请求
 function processNextBatch() {
     if (isPaused || !isTestRunning || currentIndex >= testData.items.length) return;
-    
+
     while (activeRequests < maxConcurrency && currentIndex < testData.items.length) {
         const item = testData.items[currentIndex];
         const itemIndex = currentIndex;
         currentIndex++;
         activeRequests++;
-        
+
         processSingleRequest(item, itemIndex)
             .then(result => {
                 activeRequests--;
                 testResults.push(result);
                 addResultToTable(result);
                 updateStatusBar();
-                
+
                 if (currentIndex < testData.items.length && !isPaused) {
                     processNextBatch();
                 } else if (activeRequests === 0) {
@@ -217,7 +214,7 @@ function processNextBatch() {
                 testResults.push(errorResult);
                 addResultToTable(errorResult);
                 updateStatusBar();
-                
+
                 if (currentIndex < testData.items.length && !isPaused) {
                     processNextBatch();
                 } else if (activeRequests === 0) {
@@ -231,7 +228,7 @@ function processNextBatch() {
 async function processSingleRequest(item, index) {
     try {
         let url = buildTestUrl(item, testData.categoryKey, testData.baseUrl);
-        
+
         if (!url) {
             return {
                 url: item,
@@ -244,21 +241,21 @@ async function processSingleRequest(item, index) {
                 index: index
             };
         }
-        
+
         const startTime = performance.now();
         const response = await makeRequest(url, testData.method, requestTimeout);
         const endTime = performance.now();
         const duration = (endTime - startTime).toFixed(2);
-        
+
         let size = 'N/A';
         try {
             if (response.headers && response.headers.get('content-length')) {
                 size = formatBytes(parseInt(response.headers.get('content-length')));
             }
         } catch (e) {}
-        
+
         const isSuccess = response.ok || (response.status >= 200 && response.status < 300);
-        
+
         return {
             url: item,
             fullUrl: url,
@@ -287,18 +284,18 @@ async function processSingleRequest(item, index) {
 function buildTestUrl(item, categoryKey, baseUrl) {
     try {
         let url = item;
-        
+
         // 修复：如果item是对象，提取value属性
         if (typeof item === 'object' && item !== null) {
             url = item.value || item.url || item;
         }
-        
+
         // 修复：确保url是字符串类型
         if (!url || typeof url !== 'string') {
             console.error('processUrl: url参数无效:', url);
             return null;
         }
-        
+
         switch (categoryKey) {
             case 'absoluteApis':
             case 'paths':
@@ -308,14 +305,14 @@ function buildTestUrl(item, categoryKey, baseUrl) {
                 break;
             case 'relativeApis':
                 if (baseUrl && !url.startsWith('http')) {
-                    // 🔥 修复：自动去除相对路径开头的"."
+                    //  修复：自动去除相对路径开头的"."
                     let cleanedUrl = url;
                     if (cleanedUrl.startsWith('./')) {
                         cleanedUrl = cleanedUrl.substring(2); // 去除 "./"
                     } else if (cleanedUrl.startsWith('.')) {
                         cleanedUrl = cleanedUrl.substring(1); // 去除单独的 "."
                     }
-                    
+
                     url = baseUrl + (cleanedUrl.startsWith('/') ? '' : '/') + cleanedUrl;
                 }
                 break;
@@ -340,7 +337,7 @@ function buildTestUrl(item, categoryKey, baseUrl) {
                     url = baseUrl + (url.startsWith('/') ? '' : '/') + url;
                 }
         }
-        
+
         new URL(url);
         return url;
     } catch (error) {
@@ -353,7 +350,7 @@ function buildTestUrl(item, categoryKey, baseUrl) {
 async function makeRequest(url, method, timeout = 5000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
-    
+
     const options = {
         method: method,
         headers: {
@@ -366,25 +363,25 @@ async function makeRequest(url, method, timeout = 5000) {
         redirect: 'follow',
         signal: controller.signal
     };
-    
+
     // 添加Cookie支持
     if (testData && testData.cookieSetting) {
         options.headers['Cookie'] = testData.cookieSetting;
         options.credentials = 'include';
     }
-    
+
     if (method === 'POST') {
         options.headers['Content-Type'] = 'application/json';
         options.body = JSON.stringify({});
     }
-    
+
     try {
         const response = await fetch(url, options);
         clearTimeout(timeoutId);
         return response;
     } catch (error) {
         clearTimeout(timeoutId);
-        
+
         if (error.name === 'AbortError') {
             return {
                 status: 'Timeout',
@@ -393,7 +390,7 @@ async function makeRequest(url, method, timeout = 5000) {
                 headers: new Headers()
             };
         }
-        
+
         if (error.message.includes('CORS') || error.message.includes('fetch')) {
             try {
                 const noCorsOptions = { ...options, mode: 'no-cors' };
@@ -414,7 +411,7 @@ async function makeRequest(url, method, timeout = 5000) {
                 };
             }
         }
-        
+
         return {
             status: 'Network Error',
             statusText: error.message,
@@ -428,17 +425,17 @@ async function makeRequest(url, method, timeout = 5000) {
 function addResultToTable(result) {
     const tbody = document.getElementById('resultsBody');
     const row = document.createElement('tr');
-    
+
     const statusClass = result.success ? 'status-success' : 'status-error';
-    
-    row.innerHTML = 
+
+    row.innerHTML =
         '<td>' + (result.index + 1) + '</td>' +
         '<td class="url-cell" title="' + result.url + '">' + result.url + '</td>' +
         '<td class="' + statusClass + '">' + result.status + '</td>' +
         '<td>' + result.size + '</td>' +
         '<td>' + result.time + '</td>' +
         '<td class="' + statusClass + '">' + (result.success ? '成功' : '失败') + '</td>';
-    
+
     tbody.appendChild(row);
 }
 
@@ -448,7 +445,7 @@ function updateStatusBar() {
     const completed = testResults.length;
     const success = testResults.filter(r => r.success).length;
     const failed = testResults.filter(r => !r.success).length;
-    
+
     document.getElementById('totalCount').textContent = total;
     document.getElementById('progressCount').textContent = completed;
     document.getElementById('successCount').textContent = success;
@@ -461,11 +458,11 @@ function completeTest() {
     document.getElementById('startBtn').disabled = false;
     document.getElementById('pauseBtn').disabled = true;
     document.getElementById('pauseBtn').textContent = '暂停测试';
-    
+
     const successCount = testResults.filter(r => r.success).length;
     const totalCount = testResults.length;
-    
-    document.getElementById('testInfo').textContent = 
+
+    document.getElementById('testInfo').textContent =
         '测试完成! 成功: ' + successCount + '/' + totalCount + ' | ' + testData.categoryTitle + ' | ' + testData.method;
 }
 
@@ -474,18 +471,18 @@ function filterResults() {
     const statusFilter = document.getElementById('statusFilter').value;
     const statusCodeFilter = document.getElementById('statusCodeFilter').value;
     const rows = document.querySelectorAll('#resultsBody tr');
-    
+
     rows.forEach(row => {
         let show = true;
         const statusCell = row.cells[3].textContent;
         const resultCell = row.cells[6].textContent;
-        
+
         if (statusFilter === 'success' && resultCell !== '成功') {
             show = false;
         } else if (statusFilter === 'error' && resultCell !== '失败') {
             show = false;
         }
-        
+
         if (show && statusCodeFilter !== 'all') {
             const statusCode = parseInt(statusCell);
             if (!isNaN(statusCode)) {
@@ -497,7 +494,7 @@ function filterResults() {
                 }
             }
         }
-        
+
         row.style.display = show ? '' : 'none';
     });
 }
@@ -508,9 +505,9 @@ function exportResults() {
         alert('没有测试结果可以导出');
         return;
     }
-    
+
     const format = prompt('选择导出格式:\\n1. JSON\\n2. CSV\\n请输入 1 或 2:', '1');
-    
+
     if (format === '1') {
         exportAsJSON();
     } else if (format === '2') {
@@ -531,7 +528,7 @@ function exportAsJSON() {
         },
         results: testResults
     };
-    
+
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     downloadFile(blob, 'api-test-results-' + Date.now() + '.json');
 }
@@ -551,7 +548,7 @@ function exportAsCSV() {
             result.success ? '成功' : '失败'
         ].join(','))
     ].join('\\n');
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     downloadFile(blob, 'api-test-results-' + Date.now() + '.csv');
 }
@@ -579,13 +576,13 @@ function clearResults() {
 // 格式化字节大小
 function formatBytes(bytes, decimals = 2) {
     if (bytes === 0 || bytes === 'N/A') return 'N/A';
-    
+
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    
+
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
+
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
@@ -594,7 +591,7 @@ document.addEventListener('DOMContentLoaded', initializePage);
         `;
     }
 
-    // 生成测试窗口的HTML内容
+
     generateTestWindowHTML(testConfig) {
         return `
 <!DOCTYPE html>
@@ -875,7 +872,7 @@ document.addEventListener('DOMContentLoaded', initializePage);
 
     <!-- 将测试配置数据存储在data属性中 -->
     <div id="testConfigData" data-config="${encodeURIComponent(JSON.stringify(testConfig))}" style="display: none;"></div>
-    
+
     <!-- 使用外部脚本内容，避免chrome-extension://协议 -->
     <script>
         ${this.getScriptContent()}
