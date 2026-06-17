@@ -15,36 +15,36 @@
   <h1 align="center">幻影 (Phantom)</h1>
 
   <p align="center">
-    🚀 新一代SRC漏洞挖掘浏览器扩展
+    新一代SRC漏洞挖掘浏览器扩展
     <br />
-    <a href="https://github.com/Team-intN18-SoybeanSeclab/Phantom"><strong>📖 探索文档 »</strong></a>
+    <a href="https://github.com/Team-intN18-SoybeanSeclab/Phantom"><strong>探索文档 »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/Team-intN18-SoybeanSeclab/Phantom/issues">🐛 报告Bug</a>
+    <a href="https://github.com/Team-intN18-SoybeanSeclab/Phantom/issues">报告Bug</a>
     ·
-    <a href="https://github.com/Team-intN18-SoybeanSeclab/Phantom/issues">✨ 请求功能</a>
+    <a href="https://github.com/Team-intN18-SoybeanSeclab/Phantom/issues">请求功能</a>
   </p>
 </div>
 
 <!-- ABOUT THE PROJECT -->
-## 🎯 关于幻影
+## 关于幻影
 
 幻影是一款专为SRC漏洞挖掘场景设计的**浏览器扩展工具**，采用现代化的技术架构，为安全研究人员提供高效、智能的页面信息收集解决方案。
 
-### ✨ 核心优势
+### 核心优势
 
-- **🔍 智能识别**: 自动提取页面中的API、域名、敏感信息等关键数据
-- **🚀 深度挖掘**: 支持多层级递归扫描，不放过任何潜在漏洞点
-- **⚡ 高效处理**: 并发扫描架构，大幅提升扫描效率
-- **🎨 现代化UI**: 深色主题设计，提供优秀的用户体验
-- **🔧 高度定制**: 支持自定义正则表达式和扫描规则
+- **智能识别**: 自动提取页面中的API、域名、敏感信息等关键数据
+- **深度挖掘**: 支持多层级递归扫描，不放过任何潜在漏洞点
+- **高效处理**: 并发扫描架构，大幅提升扫描效率
+- **现代化UI**: 深色主题设计，提供优秀的用户体验
+- **高度定制**: 支持自定义正则表达式和扫描规则
 
 <!-- FEATURES -->
-## 🌟 核心功能
+## 核心功能
 
-### 🔍 一键基础扫描
+### 一键基础扫描
 <details>
-<summary>📸 点击查看基础扫描演示图</summary>
+<summary>点击查看基础扫描演示图</summary>
 <div align="center">
   <img src="https://cdn.nlark.com/yuque/0/2025/png/44105438/1755856171098-216b0f27-45f5-4234-ab67-d47d36097764.png" alt="基础扫描" width="600"/>
 </div>
@@ -57,9 +57,9 @@
 - **敏感数据**: 邮箱、手机号、IP地址、JWT令牌、认证信息
 - **安全凭证**: AWS密钥、GitHub令牌、API密钥等
 
-### 🚀 深度递归扫描
+### 深度递归扫描
 <details>
-<summary>📸 点击查看深度扫描演示图</summary>
+<summary>点击查看深度扫描演示图</summary>
 <div align="center">
   <img src="https://cdn.nlark.com/yuque/0/2025/png/44105438/1755856217086-7079d830-9736-4ca6-9f8c-1c0472aa8be0.png" alt="深度扫描" width="600"/>
 </div>
@@ -70,9 +70,9 @@
 - **智能过滤**: 自动过滤静态文件和无效链接
 - **实时更新**: 扫描过程中实时显示结果
 
-### ⚡ 批量API测试
+### 批量API测试
 <details>
-<summary>📸 点击查看API测试演示图</summary>
+<summary>点击查看API测试演示图</summary>
 <div align="center">
   <img src="https://cdn.nlark.com/yuque/0/2025/png/44105438/1755856263728-39e2f9a1-c900-4db8-a9c7-1c3c221904b6.png" alt="API测试" width="600"/>
 </div>
@@ -83,9 +83,9 @@
 - **结果预览**: 支持响应内容预览和状态码检查
 - **灵活配置**: 可自定义请求头和超时时间
 
-### 📊 数据导出与分析
+### 数据导出与分析
 <details>
-<summary>📸 点击查看数据导出演示图</summary>
+<summary>点击查看数据导出演示图</summary>
 <div align="center">
   <img src="https://cdn.nlark.com/yuque/0/2025/png/44105438/1755856359165-db64aed3-d145-4154-ac77-85e3d0320c6c.png" alt="数据导出" width="600"/>
 </div>
@@ -95,9 +95,9 @@
 - **智能命名**: 自动生成包含域名的文件名
 - **数据完整**: 保留所有扫描到的敏感信息
 
-### 🔧 自定义配置
+### 自定义配置
 <details>
-<summary>📸 点击查看自定义配置演示图</summary>
+<summary>点击查看自定义配置演示图</summary>
 <div align="center">
   <img src="https://raw.githubusercontent.com/Team-intN18-SoybeanSeclab/Phantom/refs/heads/master/icon/%E5%B1%8F%E5%B9%95%E6%88%AA%E5%9B%BE%202025-09-18%20193536.png" alt="自定义配置" width="600"/>
 </div>
@@ -109,7 +109,7 @@
 - **JS脚本注入**: 支持自定义JavaScript脚本
 
 <!-- TECHNOLOGY -->
-## 🛠️ 技术架构
+## 技术架构
 
 ### 前端技术
 - **HTML5 + CSS3**: 现代化的界面设计
@@ -128,7 +128,7 @@
 - **内存缓存**: 提升扫描性能和响应速度
 
 <!-- INSTALLATION -->
-## 🚀 快速开始
+## 快速开始
 
 ### 安装步骤
 
@@ -143,7 +143,7 @@
 
 3. **启用开发者模式**
 <details>
-<summary>📸 点击查看开发者模式演示图</summary>
+<summary>点击查看开发者模式演示图</summary>
    <div align="center">
      <img src="https://via.placeholder.com/600x300/f8f9fa/212529?text=启用开发者模式" alt="开发者模式" width="600"/>
    </div>
@@ -157,9 +157,9 @@
 
 ### 基础使用
 
-#### 🔍 快速扫描
+#### 快速扫描
 <details>
-<summary>📋 点击查看快速扫描步骤</summary>
+<summary>点击查看快速扫描步骤</summary>
 
 1. 打开目标网页
 2. 点击幻影扩展图标
@@ -168,9 +168,9 @@
 
 </details>
 
-#### 🚀 深度扫描
+#### 深度扫描
 <details>
-<summary>📋 点击查看深度扫描步骤</summary>
+<summary>点击查看深度扫描步骤</summary>
 
 1. 切换到"深度扫描"页面
 2. 配置扫描参数（深度、并发数）
@@ -179,9 +179,9 @@
 
 </details>
 
-#### ⚡ API测试
+#### API测试
 <details>
-<summary>📋 点击查看API测试步骤</summary>
+<summary>点击查看API测试步骤</summary>
 
 1. 切换到"API测试"页面
 2. 选择要测试的数据分类
@@ -191,9 +191,9 @@
 </details>
 
 <!-- DATA CATEGORIES -->
-## 📋 支持的数据类型
+## 支持的数据类型
 
-### 🔗 网络与资源
+### 网络与资源
 | 分类 | 说明 | 示例 |
 |------|------|------|
 | `absoluteApis` | 绝对路径API | `https://api.example.com/users` |
@@ -205,7 +205,7 @@
 | `cssFiles` | CSS样式文件 | `/static/style.css` |
 | `images` | 图片资源 | `/img/logo.png` |
 
-### 🔐 安全敏感信息
+### 安全敏感信息
 | 分类 | 说明 | 示例 |
 |------|------|------|
 | `emails` | 邮箱地址 | `admin@example.com` |
@@ -216,7 +216,7 @@
 | `githubTokens` | GitHub令牌 | `ghp_xxxxxxxxxxxxxxxxxxxx` |
 | `credentials` | 认证凭证 | `username:password` |
 
-### 📊 其他信息
+### 其他信息
 | 分类 | 说明 |
 |------|------|
 | `paths` | 路径信息 |
@@ -227,7 +227,7 @@
 | `cryptoUsage` | 加密算法使用 |
 
 <!-- CONFIGURATION -->
-## ⚙️ 高级配置
+## 高级配置
 
 ### 深度扫描参数
 - **最大深度**: 建议2-3层，避免过度抓取
@@ -237,7 +237,7 @@
 
 ### 自定义正则表达式
 <details>
-<summary>💻 点击查看代码示例</summary>
+<summary>点击查看代码示例</summary>
 
 ```javascript
 // 示例：自定义API规则
@@ -255,11 +255,11 @@ const customSensitiveRegex = /password[=:]\s*[\'"]?([^\'"\s]+)/gi;
 - **认证信息**: 支持Bearer Token、Basic Auth等
 
 <!-- TROUBLESHOOTING -->
-## 🔧 常见问题
+## 常见问题
 
-### ❓ 扫描无结果或结果很少？
+### 扫描无结果或结果很少？
 <details>
-<summary>🔍 点击查看详细解决方案</summary>
+<summary>点击查看详细解决方案</summary>
 
 **可能原因：**
 - 目标为系统页面（chrome://、chrome-extension://）
@@ -273,9 +273,9 @@ const customSensitiveRegex = /password[=:]\s*[\'"]?([^\'"\s]+)/gi;
 
 </details>
 
-### ❓ 深度扫描不生效？
+### 深度扫描不生效？
 <details>
-<summary>🔍 点击查看详细解决方案</summary>
+<summary>点击查看详细解决方案</summary>
 
 **可能原因：**
 - 目标站点需要认证授权
@@ -289,9 +289,9 @@ const customSensitiveRegex = /password[=:]\s*[\'"]?([^\'"\s]+)/gi;
 
 </details>
 
-### ❓ Excel文件无法打开？
+### Excel文件无法打开？
 <details>
-<summary>🔍 点击查看详细解决方案</summary>
+<summary>点击查看详细解决方案</summary>
 
 **解决方案：**
 - 确保使用支持XML格式的Excel版本
@@ -300,9 +300,9 @@ const customSensitiveRegex = /password[=:]\s*[\'"]?([^\'"\s]+)/gi;
 
 </details>
 
-### ❓ 浏览器出现卡顿？
+### 浏览器出现卡顿？
 <details>
-<summary>🔍 点击查看详细优化建议</summary>
+<summary>点击查看详细优化建议</summary>
 
 **优化建议：**
 - 降低深度扫描的并发数
@@ -312,39 +312,39 @@ const customSensitiveRegex = /password[=:]\s*[\'"]?([^\'"\s]+)/gi;
 </details>
 
 <!-- SECURITY -->
-## 🔒 安全与合规
+## 安全与合规
 
-### ✅ 合规使用
+### 合规使用
 - 本工具仅用于授权范围内的安全测试
 - 适用于SRC漏洞挖掘和自查场景
 - 请遵循目标站点的安全策略
 
-### 🔐 隐私保护
+### 隐私保护
 - 所有数据本地存储，不会上传到服务器
 - 使用IndexedDB进行本地数据持久化
 - 支持一键清除所有扫描数据
 
-### ⚖️ 法律声明
+### 法律声明
 - 用户需自行承担使用责任
 - 禁止用于任何非法用途
 - 请遵守相关法律法规
 
 <!-- CONTRIBUTING -->
-## 🤝 贡献指南
+## 贡献指南
 
 我们欢迎社区成员参与项目贡献！
 
-### 🐛 报告问题
+### 报告问题
 - 使用GitHub Issues报告bug
 - 提供详细的复现步骤
 - 包含相关截图和日志
 
-### ✨ 功能建议
+### 功能建议
 - 在Issues中提出新功能建议
 - 描述具体的使用场景
 - 说明期望的实现方式
 
-### 🔧 代码贡献
+### 代码贡献
 1. Fork项目仓库
 2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
 3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
@@ -352,9 +352,9 @@ const customSensitiveRegex = /password[=:]\s*[\'"]?([^\'"\s]+)/gi;
 5. 创建Pull Request
 
 <!-- ACKNOWLEDGMENTS -->
-## 🙏 致谢
+## 致谢
 
-D3f4ultX、findsomething、SnowEyes、0xsdeo、hama、zeroqing
+D3f4ultX、findsomething、SnowEyes、0xsdeo、zeroqing
 
 隼目安全、知攻善防实验室、零羊Web、表哥带我
 
@@ -364,8 +364,19 @@ D3f4ultX、findsomething、SnowEyes、0xsdeo、hama、zeroqing
 - 安全研究：[https://www.hdsec.cn/](https://www.hdsec.cn/)
 - 宣传文章：[微信公众号文章](https://mp.weixin.qq.com/s/FrUeZ9VYk6EP1EEikpwfzQ)
 
+## 更新日志
+
+### v1.8.1
+- 扫描性能：结果渲染上限 + 事件委托 + DocumentFragment，去重复杂度由 O(n^2) 优化为 O(n)，浏览器空闲时段调度，解决大数据量下的卡顿
+- 深度扫描：新增第三方 JS 库屏蔽（设置中可配置开关与自定义规则），去除人为延迟，整体提速明显
+- 基础扫描：手动扫描时新增同源外部 JS 抓取（带单文件超时与整体截止），内容脚本内置兜底默认正则
+- 提取精度：新增多云厂商 AK/SK（AWS、阿里云、腾讯云、京东、支付宝、苹果）；身份证、JWT、IP、手机号正则全面升级并加入版本迁移；凭证、接口、注释误报过滤
+- 界面：双列高密度布局、更大窗口、整体视觉美化；扫描完成后自动收起操作按钮
+- JS Hook：注入与关闭可逆切换机制；新增反调试类可逆预设（绕过无限 debugger、禁用 console.clear、固定窗口尺寸、固定时间等）
+- 工程：移除全部 emoji 与冗余注释，文件命名规范化，清理死代码
+
 <!-- LICENSE -->
-## 📄 许可证
+## 许可证
 
 本项目采用Apache-2.0许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
 
@@ -388,10 +399,10 @@ D3f4ultX、findsomething、SnowEyes、0xsdeo、hama、zeroqing
   <p>让SRC漏洞挖掘更高效、更智能</p>
   <p>
     <a href="https://github.com/Team-intN18-SoybeanSeclab/Phantom">
-      <img src="https://img.shields.io/badge/⭐-Star%20This%20Project-blue" alt="Star">
+      <img src="https://img.shields.io/badge/-Star%20This%20Project-blue" alt="Star">
     </a>
     <a href="https://github.com/Team-intN18-SoybeanSeclab/Phantom/fork">
-      <img src="https://img.shields.io/badge/🍴-Fork%20This%20Project-green" alt="Fork">
+      <img src="https://img.shields.io/badge/-Fork%20This%20Project-green" alt="Fork">
     </a>
   </p>
 </div>
