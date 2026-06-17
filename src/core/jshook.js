@@ -1,6 +1,5 @@
-// JSHook 预设脚本库
 const JSHookPresets = {
-    // 预设脚本数据
+
     presetScripts: [
             {
                 name: "Hook XMLHttpRequest",
@@ -9,14 +8,14 @@ const JSHookPresets = {
 (function() {
     const originalOpen = XMLHttpRequest.prototype.open;
     const originalSend = XMLHttpRequest.prototype.send;
-    
+
     XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
         this._method = method;
         this._url = url;
         console.log('[XHR Hook] 请求开始:', method, url);
         return originalOpen.apply(this, arguments);
     };
-    
+
     XMLHttpRequest.prototype.send = function(data) {
         this.addEventListener('readystatechange', function() {
             if (this.readyState === 4) {
@@ -28,37 +27,37 @@ const JSHookPresets = {
                 });
             }
         });
-        
+
         if (data) {
             console.log('[XHR Hook] 请求数据:', data);
         }
-        
+
         return originalSend.apply(this, arguments);
     };
-    
+
     console.log('[XHR Hook] XMLHttpRequest Hook 已激活');
 })();`,
                 isPreset: true,
                 created: new Date().toISOString()
             },
-            
+
             {
                 name: "Hook Fetch API",
                 description: "拦截并监控所有fetch请求，显示请求和响应的详细信息。现代浏览器中替代XMLHttpRequest的新API监控。",
                 code: `// Hook Fetch API
 (function() {
     const originalFetch = window.fetch;
-    
+
     window.fetch = function(...args) {
         const [resource, config] = args;
-        
+
         console.log('[Fetch Hook] 请求开始:', {
             url: resource,
             method: config?.method || 'GET',
             headers: config?.headers,
             body: config?.body
         });
-        
+
         return originalFetch.apply(this, args)
             .then(response => {
                 console.log('[Fetch Hook] 响应完成:', {
@@ -67,7 +66,7 @@ const JSHookPresets = {
                     statusText: response.statusText,
                     headers: Object.fromEntries(response.headers.entries())
                 });
-                
+
                 // 克隆响应以便查看内容
                 const clonedResponse = response.clone();
                 clonedResponse.text().then(text => {
@@ -75,7 +74,7 @@ const JSHookPresets = {
                 }).catch(err => {
                     console.log('[Fetch Hook] 无法读取响应内容:', err);
                 });
-                
+
                 return response;
             })
             .catch(error => {
@@ -83,13 +82,13 @@ const JSHookPresets = {
                 throw error;
             });
     };
-    
+
     console.log('[Fetch Hook] Fetch API Hook 已激活');
 })();`,
                 isPreset: true,
                 created: new Date().toISOString()
             },
-            
+
             {
                 name: "Hook Console Methods",
                 description: "拦截所有console方法调用，可以监控页面的日志输出，包括console.log、console.error等。",
@@ -97,32 +96,32 @@ const JSHookPresets = {
 (function() {
     const originalMethods = {};
     const consoleMethods = ['log', 'warn', 'error', 'info', 'debug'];
-    
+
     consoleMethods.forEach(method => {
         originalMethods[method] = console[method];
-        
+
         console[method] = function(...args) {
             // 记录原始调用
             originalMethods[method].apply(console, args);
-            
+
             // 添加Hook标记
             originalMethods.log('[Console Hook]', method.toUpperCase() + ':', ...args);
         };
     });
-    
+
     console.log('[Console Hook] Console Methods Hook 已激活');
 })();`,
                 isPreset: true,
                 created: new Date().toISOString()
             },
-            
+
             {
                 name: "Hook Cookie Operations",
                 description: "监控所有Cookie的读取和设置操作，可以追踪页面对Cookie的访问和修改。",
                 code: `// Hook Cookie Operations
 (function() {
     let originalCookie = document.cookie;
-    
+
     Object.defineProperty(document, 'cookie', {
         get: function() {
             console.log('[Cookie Hook] 读取Cookie:', originalCookie);
@@ -131,7 +130,7 @@ const JSHookPresets = {
         set: function(value) {
             console.log('[Cookie Hook] 设置Cookie:', value);
             originalCookie = value;
-            
+
             // 实际设置Cookie
             const cookieParts = value.split(';');
             const mainPart = cookieParts[0];
@@ -139,13 +138,13 @@ const JSHookPresets = {
         },
         configurable: true
     });
-    
+
     console.log('[Cookie Hook] Cookie Operations Hook 已激活');
 })();`,
                 isPreset: true,
                 created: new Date().toISOString()
             },
-            
+
             {
                 name: "Hook LocalStorage",
                 description: "监控LocalStorage的所有操作，包括setItem、getItem、removeItem等方法调用。",
@@ -155,80 +154,80 @@ const JSHookPresets = {
     const originalGetItem = localStorage.getItem;
     const originalRemoveItem = localStorage.removeItem;
     const originalClear = localStorage.clear;
-    
+
     localStorage.setItem = function(key, value) {
         console.log('[LocalStorage Hook] setItem:', key, '=', value);
         return originalSetItem.apply(this, arguments);
     };
-    
+
     localStorage.getItem = function(key) {
         const value = originalGetItem.apply(this, arguments);
         console.log('[LocalStorage Hook] getItem:', key, '=', value);
         return value;
     };
-    
+
     localStorage.removeItem = function(key) {
         console.log('[LocalStorage Hook] removeItem:', key);
         return originalRemoveItem.apply(this, arguments);
     };
-    
+
     localStorage.clear = function() {
         console.log('[LocalStorage Hook] clear: 清空所有数据');
         return originalClear.apply(this, arguments);
     };
-    
+
     console.log('[LocalStorage Hook] LocalStorage Hook 已激活');
 })();`,
                 isPreset: true,
                 created: new Date().toISOString()
             },
-            
+
             {
                 name: "Hook WebSocket",
                 description: "拦截WebSocket连接和消息传输，监控实时通信数据。",
                 code: `// Hook WebSocket
 (function() {
     const originalWebSocket = window.WebSocket;
-    
+
     window.WebSocket = function(url, protocols) {
         console.log('[WebSocket Hook] 创建连接:', url, protocols);
-        
+
         const ws = new originalWebSocket(url, protocols);
-        
+
         const originalSend = ws.send;
         ws.send = function(data) {
             console.log('[WebSocket Hook] 发送消息:', data);
             return originalSend.apply(this, arguments);
         };
-        
+
         ws.addEventListener('open', function(event) {
             console.log('[WebSocket Hook] 连接已打开:', event);
         });
-        
+
         ws.addEventListener('message', function(event) {
             console.log('[WebSocket Hook] 收到消息:', event.data);
         });
-        
+
         ws.addEventListener('close', function(event) {
             console.log('[WebSocket Hook] 连接已关闭:', event.code, event.reason);
         });
-        
+
         ws.addEventListener('error', function(event) {
             console.log('[WebSocket Hook] 连接错误:', event);
         });
-        
+
         return ws;
     };
-    
+
     // 保持原型链
     window.WebSocket.prototype = originalWebSocket.prototype;
-    
+
     console.log('[WebSocket Hook] WebSocket Hook 已激活');
 })();`,
                 isPreset: true,
                 created: new Date().toISOString()
             },
-            
+
             {
                 name: "Hook Function Calls",
                 description: "通用函数调用Hook，可以监控指定函数的调用情况。需要修改targetFunction变量指定要监控的函数。",
@@ -236,19 +235,19 @@ const JSHookPresets = {
 (function() {
     // 修改这里指定要Hook的函数
     const targetFunction = 'alert'; // 例如: 'setTimeout', 'setInterval', 'eval' 等
-    
+
     if (window[targetFunction] && typeof window[targetFunction] === 'function') {
         const originalFunction = window[targetFunction];
-        
+
         window[targetFunction] = function(...args) {
             console.log('[Function Hook] 调用 ' + targetFunction + ':', args);
-            
+
             // 获取调用栈
             console.log('[Function Hook] 调用栈:', new Error().stack);
-            
+
             return originalFunction.apply(this, args);
         };
-        
+
         console.log('[Function Hook] ' + targetFunction + ' Hook 已激活');
     } else {
         console.warn('[Function Hook] 函数不存在:', targetFunction);
@@ -257,7 +256,7 @@ const JSHookPresets = {
                 isPreset: true,
                 created: new Date().toISOString()
             },
-            
+
             {
                 name: "Hook Event Listeners",
                 description: "监控所有事件监听器的添加和移除，可以追踪页面的事件绑定情况。",
@@ -265,7 +264,7 @@ const JSHookPresets = {
 (function() {
     const originalAddEventListener = EventTarget.prototype.addEventListener;
     const originalRemoveEventListener = EventTarget.prototype.removeEventListener;
-    
+
     EventTarget.prototype.addEventListener = function(type, listener, options) {
         console.log('[Event Hook] 添加事件监听器:', {
             target: this,
@@ -273,10 +272,10 @@ const JSHookPresets = {
             listener: listener,
             options: options
         });
-        
+
         return originalAddEventListener.apply(this, arguments);
     };
-    
+
     EventTarget.prototype.removeEventListener = function(type, listener, options) {
         console.log('[Event Hook] 移除事件监听器:', {
             target: this,
@@ -284,16 +283,16 @@ const JSHookPresets = {
             listener: listener,
             options: options
         });
-        
+
         return originalRemoveEventListener.apply(this, arguments);
     };
-    
+
     console.log('[Event Hook] Event Listeners Hook 已激活');
 })();`,
                 isPreset: true,
                 created: new Date().toISOString()
             },
-            
+
             {
                 name: 'Hook Eval',
                 description: '监听网站对于eval的调用',
@@ -379,7 +378,7 @@ const JSHookPresets = {
                 isPreset: true,
                 created: new Date().toISOString()
             },
-            
+
             {
                 name: 'Clear_vue_Navigation_Guards',
                 description: '去除vue路由守卫，此脚本来源https://github.com/0xsdeo/Hook_JS/blob/main/vue/Clear_vue_Navigation_Guards.js',
@@ -451,7 +450,7 @@ const JSHookPresets = {
             console.log(this);
         }
     });
-})();`      
+})();`
             },
             {
                 name: 'Hook_outerHTML',
@@ -476,7 +475,7 @@ const JSHookPresets = {
             set_accessor.call(this, ...arguments);// 将网站js设置目标属性值时所传入的内容传给原setter设置并返回结果
         }
     });
-})();`      
+})();`
             },
             {
                 name: 'Hook_CryptoJS',
@@ -709,36 +708,145 @@ const JSHookPresets = {
 
     window.close = function() {};
 })();`
+            },
+            {
+                name: '绕过无限Debugger(可逆)',
+                hookId: 'antidebug-bypass-plus',
+                description: '绕过无限debugger：Hook Function构造器与eval去除debugger语句，并拦截含debugger的定时器。可随时点击关闭还原。',
+                isPreset: true,
+                code: `(function(){
+    var _eval = window.eval;
+    var _ctor = Function.prototype.constructor;
+    var _setInterval = window.setInterval;
+    var _setTimeout = window.setTimeout;
+    function strip(s){ return (typeof s === 'string') ? s.replace(/debugger\\s*;?/g, '') : s; }
+    var FakeCtor = function(){ var a = Array.prototype.slice.call(arguments); if(a.length){ a[a.length-1] = strip(a[a.length-1]); } return _ctor.apply(this, a); };
+    FakeCtor.prototype = _ctor.prototype;
+    Function.prototype.constructor = FakeCtor;
+    window.eval = function(s){ return _eval(strip(s)); };
+    window.setInterval = function(fn){ var a = Array.prototype.slice.call(arguments); if(typeof fn === 'function' && /debugger/.test(Function.prototype.toString.call(fn))) return 0; if(typeof fn === 'string'){ a[0] = strip(fn); } return _setInterval.apply(this, a); };
+    window.setTimeout = function(fn){ var a = Array.prototype.slice.call(arguments); if(typeof fn === 'function' && /debugger/.test(Function.prototype.toString.call(fn))) return 0; if(typeof fn === 'string'){ a[0] = strip(fn); } return _setTimeout.apply(this, a); };
+    window.__PH.reg(function(){ Function.prototype.constructor = _ctor; window.eval = _eval; window.setInterval = _setInterval; window.setTimeout = _setTimeout; });
+    console.log('[Phantom] 无限debugger绕过已启用，点击关闭即可还原');
+})();`
+            },
+            {
+                name: '禁止清空控制台(console.clear)',
+                hookId: 'antidebug-noclear',
+                description: '禁用console.clear，防止站点清空控制台日志。可随时关闭还原。',
+                isPreset: true,
+                code: `(function(){
+    var o = console.clear;
+    console.clear = function(){};
+    window.__PH.reg(function(){ console.clear = o; });
+    console.log('[Phantom] console.clear 已禁用');
+})();`
+            },
+            {
+                name: '绕过console.table时间差检测',
+                hookId: 'antidebug-notable',
+                description: '将console.table置为空函数，绕过部分基于console.table运行耗时的反调试检测。可随时关闭还原。',
+                isPreset: true,
+                code: `(function(){
+    var o = console.table;
+    console.table = function(){};
+    window.__PH.reg(function(){ console.table = o; });
+    console.log('[Phantom] console.table 已置空');
+})();`
+            },
+            {
+                name: '阻止页面自动关闭(window.close)',
+                hookId: 'antidebug-noclose',
+                description: '拦截window.close，避免反调试逻辑自动关闭当前页面。可随时关闭还原。',
+                isPreset: true,
+                code: `(function(){
+    var o = window.close;
+    window.close = function(){ console.log('[Phantom] 已拦截 window.close'); };
+    window.__PH.reg(function(){ window.close = o; });
+})();`
+            },
+            {
+                name: '阻止反调试跳转(history)',
+                hookId: 'antidebug-nohistory',
+                description: '拦截history.back/go/forward，避免反调试逻辑强制返回或跳转历史页面。可随时关闭还原。',
+                isPreset: true,
+                code: `(function(){
+    var b = history.back, g = history.go, f = history.forward;
+    history.back = function(){};
+    history.go = function(){};
+    history.forward = function(){};
+    window.__PH.reg(function(){ history.back = b; history.go = g; history.forward = f; });
+    console.log('[Phantom] history 跳转已拦截');
+})();`
+            },
+            {
+                name: '固定窗口尺寸(绕过DevTools尺寸检测)',
+                hookId: 'antidebug-fixsize',
+                description: '令outerWidth/outerHeight等于innerWidth/innerHeight，绕过基于窗口尺寸差判断DevTools是否打开的反调试。可随时关闭还原。',
+                isPreset: true,
+                code: `(function(){
+    var dw = Object.getOwnPropertyDescriptor(window, 'outerWidth');
+    var dh = Object.getOwnPropertyDescriptor(window, 'outerHeight');
+    Object.defineProperty(window, 'outerWidth', { configurable: true, get: function(){ return window.innerWidth; } });
+    Object.defineProperty(window, 'outerHeight', { configurable: true, get: function(){ return window.innerHeight; } });
+    window.__PH.reg(function(){
+        if(dw){ Object.defineProperty(window, 'outerWidth', dw); } else { try{ delete window.outerWidth; }catch(e){} }
+        if(dh){ Object.defineProperty(window, 'outerHeight', dh); } else { try{ delete window.outerHeight; }catch(e){} }
+    });
+    console.log('[Phantom] 已固定窗口尺寸 outer=inner');
+})();`
+            },
+            {
+                name: '固定时间(绕过时间差反调试)',
+                hookId: 'antidebug-faketime',
+                description: '固定Date.now与performance.now返回值，绕过基于执行时间差的反调试检测。注意可能影响依赖时间的页面功能。可随时关闭还原。',
+                isPreset: true,
+                code: `(function(){
+    var dNow = Date.now;
+    var pNow = (window.performance && performance.now) ? performance.now.bind(performance) : null;
+    var fixed = dNow();
+    Date.now = function(){ return fixed; };
+    if(window.performance && performance.now){ performance.now = function(){ return 0; }; }
+    window.__PH.reg(function(){ Date.now = dNow; if(pNow){ performance.now = pNow; } });
+    console.log('[Phantom] Date.now/performance.now 已固定，点击关闭还原');
+})();`
             }
-            
+
         ],
-        
-    
-    // 初始化预设脚本到IndexedDB
+
+        PRESET_VERSION: 2,
+
+
+
     async initializePresets() {
         try {
-            //console.log('[JSHook Presets] 开始初始化预设脚本...');
-            //console.log('[JSHook Presets] 预设脚本总数:', this.presetScripts.length);
-            
-            // 检查IndexedDBManager是否可用
+
+
+
+
             if (!window.IndexedDBManager) {
                 console.error('[JSHook Presets] IndexedDBManager未找到');
                 return;
             }
-            
-            // 获取现有脚本
+
+
             const existingScripts = await window.IndexedDBManager.loadJSScripts();
-            //console.log('[JSHook Presets] 现有脚本数量:', existingScripts.length);
-            //console.log('[JSHook Presets] 现有脚本:', existingScripts.map(s => s.name));
-            
-            // 检查是否已经有预设脚本
+
+
+            let presetVersion = 0;
+            try {
+                const verResult = await chrome.storage.local.get(['jsHookPresetVersion']);
+                presetVersion = verResult.jsHookPresetVersion || 0;
+            } catch (e) {
+            }
+
             const hasPresets = existingScripts.some(script => script.isPreset === true);
-            if (hasPresets) {
-                //console.log('[JSHook Presets] 预设脚本已存在，跳过初始化');
+            if (hasPresets && presetVersion === this.PRESET_VERSION) {
+
                 return;
             }
-            
-            // 为预设脚本添加标识和时间戳
+
+
             const presetsWithMetadata = this.presetScripts.map((script, index) => ({
                 ...script,
                 id: `preset_${index}_${Date.now()}`,
@@ -747,49 +855,54 @@ const JSHookPresets = {
                 updatedAt: new Date().toISOString(),
                 timestamp: Date.now()
             }));
-            
-            //console.log('[JSHook Presets] 准备添加预设脚本数量:', presetsWithMetadata.length);
-            //console.log('[JSHook Presets] 预设脚本名称:', presetsWithMetadata.map(s => s.name));
-            
-            // 合并预设脚本和现有脚本，然后保存到IndexedDB
-            const allScripts = [...existingScripts, ...presetsWithMetadata];
-            //console.log('[JSHook Presets] 合并后总脚本数量:', allScripts.length);
-            
+
+
+
+
+
+            const userScripts = existingScripts.filter(script => script.isPreset !== true);
+            const allScripts = [...userScripts, ...presetsWithMetadata];
+
+
             await window.IndexedDBManager.saveJSScripts(allScripts);
-            
-            //console.log('[JSHook Presets] 预设脚本初始化完成');
-            
-            // 验证保存结果
+            try {
+                await chrome.storage.local.set({ jsHookPresetVersion: this.PRESET_VERSION });
+            } catch (e) {
+            }
+
+
+
+
             const verifyScripts = await window.IndexedDBManager.loadJSScripts();
-            //console.log('[JSHook Presets] 验证：保存后脚本数量:', verifyScripts.length);
-            
+
+
         } catch (error) {
             console.error('[JSHook Presets] 初始化预设脚本失败:', error);
         }
     },
-    
-    // 重置预设脚本（开发调试用）
+
+
     async resetPresets() {
         try {
-            // 删除所有预设脚本
+
             const scripts = await window.IndexedDBManager.loadJSScripts();
             const nonPresetScripts = scripts.filter(script => script.isPreset !== true);
-            
-            // 保存非预设脚本回IndexedDB
+
+
             await window.IndexedDBManager.saveJSScripts(nonPresetScripts);
-            
+
             console.log('[JSHook Presets] 预设脚本已重置');
-            
+
         } catch (error) {
             console.error('[JSHook Presets] 重置预设脚本失败:', error);
         }
     }
 };
 
-// 导出到全局作用域
+
 window.JSHookPresets = JSHookPresets;
 
-// 页面加载完成后自动初始化预设脚本
+
 document.addEventListener('DOMContentLoaded', () => {
     JSHookPresets.initializePresets();
 });

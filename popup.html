@@ -8,16 +8,16 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
-            width: 480px;
-            min-height: 650px;
+            width: 640px;
+            min-height: 640px;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: rgb(30, 30, 30);
             color: #fff;
             overflow-x: hidden;
         }
-        
+
         .main-container {
             width: 100%;
             min-height: 650px;
@@ -26,16 +26,16 @@
             background: rgb(30, 30, 30);
             position: relative;
         }
-        
-        
-        
+
+
+
         @keyframes moveDot {
             0%, 100% { top: 10%; right: 10%; }
             25% { top: 10%; right: calc(100% - 35px); }
             50% { top: calc(100% - 30px); right: calc(100% - 35px); }
             75% { top: calc(100% - 30px); right: 10%; }
         }
-        
+
         .card {
             z-index: 1;
             width: 100%;
@@ -49,14 +49,14 @@
             box-shadow: 0px 0px 10px 5px rgba(0, 0, 0, 0.705);
             transition: all 0.4s;
         }
-        
+
         .card:hover {
             border-radius: 15px;
             box-shadow: 0px 0px 15px 8px rgba(0, 0, 0, 0.8);
             background: rgb(30, 30, 30);
         }
-        
-        /* 内容切换效果 */
+
+
         .card .first-content {
             position: relative;
             height: 100%;
@@ -64,7 +64,7 @@
             z-index: 1;
             transition: all 0.4s;
         }
-        
+
         .card::after {
             content: "";
             position: absolute;
@@ -79,45 +79,45 @@
             pointer-events: none;
             transition: all 0.4s;
         }
-        
+
         .card:hover::after {
             opacity: 0.6;
             width: 280px;
             height: 220px;
             filter: blur(70px);
         }
-        
-        
-        
-        
-        
-        
-        
+
+
+
+
+
+
+
         .bottoml {
             bottom: 10%;
         }
-        
+
         .leftl {
             left: 10%;
             width: 1px;
             height: 100%;
             background: linear-gradient(180deg, #747474 30%, #222424 70%);
         }
-        
+
         .rightl {
             right: 10%;
             width: 1px;
             height: 100%;
         }
-        
-        /* 标题区域 */
+
+
         .header {
             text-align: center;
             padding: 12px 15px 10px;
             position: relative;
             z-index: 10;
         }
-        
+
         .header h1 {
             font-size: 20px;
             font-weight: bolder;
@@ -127,14 +127,14 @@
             color: transparent;
             margin-bottom: 3px;
         }
-        
+
         .author-info {
             font-size: 11px;
             color: #888;
             opacity: 0.8;
         }
-        
-        /* 横向导航 */
+
+
         .nav-tabs {
             display: flex;
             justify-content: center;
@@ -146,7 +146,7 @@
             position: relative;
             z-index: 10;
         }
-        
+
         .nav-tab {
             flex: 1;
             padding: 8px 12px;
@@ -155,25 +155,24 @@
             font-weight: 500;
             cursor: pointer;
             border-radius: 6px;
-            transition: all 0.3s ease;
+            transition: color 0.2s ease, background 0.2s ease;
             color: #888;
             position: relative;
             overflow: hidden;
         }
-        
+
         .nav-tab.active {
             background: rgba(255, 255, 255, 0.08);
             color: #fff;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
             border: 1px solid rgba(255, 255, 255, 0.12);
         }
-        
+
         .nav-tab:hover {
             color: #fff;
             background: rgba(255, 255, 255, 0.05);
-            transform: translateY(-1px);
         }
-        
+
         .nav-tab::after {
             content: '';
             position: absolute;
@@ -184,33 +183,33 @@
             background: linear-gradient(90deg, transparent, #3b82f6, transparent);
             transition: all 0.3s;
         }
-        
+
         .nav-tab:hover::after {
             width: 80%;
             left: 10%;
         }
-        
+
         .nav-tab.active::after {
             width: 90%;
             left: 5%;
             background: linear-gradient(90deg, transparent, #00d4aa, transparent);
         }
-        
-        /* 页面内容区域 */
+
+
         .page-content {
             padding: 0 15px;
             position: relative;
             z-index: 10;
         }
-        
+
         .page {
             display: none;
         }
-        
+
         .page.active {
             display: block;
         }
-        
+
         .action-button {
             position: relative;
             cursor: pointer;
@@ -225,24 +224,24 @@
             border-radius: 10px;
             border: 1px solid rgba(255, 255, 255, 0.2);
             background: rgba(31, 41, 55, 0.3);
-            backdrop-filter: blur(12px);
-            transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+            backdrop-filter: blur(6px);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
             width: 100%;
             margin-bottom: 10px;
             overflow: hidden;
             will-change: transform;
         }
-        
+
         .action-button:focus {
             outline: 2px solid white;
             outline-offset: 4px;
         }
-        
+
         .action-button span.text {
             position: relative;
             z-index: 20;
         }
-        
+
         .action-button .shine {
             position: absolute;
             top: 0;
@@ -256,7 +255,7 @@
             z-index: 10;
             pointer-events: none;
         }
-        
+
         .action-button:hover .shine {
             transform: skew(-13deg) translateX(120%);
         }
@@ -264,7 +263,7 @@
             transform: scale(1.08);
             box-shadow: 0 20px 25px -5px rgba(107, 114, 128, 0.5);
         }
-        
+
         .action-button .border-tl {
             width: 50%;
             transition: all 0.3s;
@@ -277,7 +276,7 @@
             top: 0;
             left: 0;
         }
-        
+
         .action-button .border-tr {
             width: 50%;
             transition: all 0.3s;
@@ -290,11 +289,11 @@
             top: 0;
             right: 0;
         }
-        
+
         .action-button:hover .border-tr {
             height: 90%;
         }
-        
+
         .action-button .border-bl {
             width: 50%;
             transition: all 0.3s;
@@ -307,11 +306,11 @@
             left: 0;
             bottom: 0;
         }
-        
+
         .action-button:hover .border-bl {
             height: 90%;
         }
-        
+
         .action-button .border-br {
             width: 50%;
             transition: all 0.3s;
@@ -324,15 +323,15 @@
             right: 0;
             bottom: 0;
         }
-        /* 弱化霓虹装饰 */
+
         .action-button .border-tl,
         .action-button .border-tr,
         .action-button .border-bl,
         .action-button .border-br {
             display: none !important;
         }
-        
-        /* 扫描按钮特殊样式 */
+
+
         .scan-button {
             background: #3b82f6;
             border-color: rgba(59, 130, 246, 0.5);
@@ -348,8 +347,8 @@
             50% { box-shadow: 0 0 18px rgba(59,130,246,0.45); }
             100% { box-shadow: 0 0 5px rgba(59,130,246,0.25); }
         }
-        
-        /* 深度扫描配置 */
+
+
         .deep-scan-config {
             background: rgba(40, 40, 40, 0.5);
             border: 1px solid rgba(90, 90, 90, 0.3);
@@ -358,27 +357,27 @@
             margin-bottom: 15px;
             transition: all 0.3s;
         }
-        
+
         .deep-scan-config:hover {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
             border-color: rgba(255, 255, 255, 0.2);
         }
-        
+
         .config-title {
             font-weight: 600;
             color: #fff;
             margin-bottom: 10px;
             font-size: 14px;
         }
-        
+
         .config-options {
             display: flex;
             gap: 15px;
             margin-bottom: 10px;
             flex-wrap: wrap;
         }
-        
+
         .config-option {
             display: flex;
             align-items: center;
@@ -386,29 +385,29 @@
             font-size: 12px;
             color: #ccc;
         }
-        
+
         .config-option input[type="checkbox"] {
             accent-color: #3b82f6;
         }
-        
-        /* 域名扫描设置样式 */
+
+
         .config-option small {
             color: #888;
             font-size: 11px;
         }
-        
+
         .config-controls {
             display: flex;
             gap: 15px;
             align-items: center;
             margin-bottom: 10px;
         }
-        
+
         .config-controls label {
             font-size: 12px;
             color: #ccc;
         }
-        
+
         .config-controls select {
             padding: 4px 8px;
             background: rgba(0, 0, 0, 0.5);
@@ -417,33 +416,33 @@
             color: #fff;
             font-size: 12px;
         }
-        
-        /* 进度条 */
+
+
         .progress-container {
             margin-top: 10px;
         }
-        
+
         .progress-text {
             font-size: 12px;
             margin-bottom: 5px;
             color: #ccc;
         }
-        
+
         .progress-bar-container {
             background: rgba(0, 0, 0, 0.5);
             border-radius: 10px;
             height: 6px;
             overflow: hidden;
         }
-        
+
         .progress-bar {
             background: linear-gradient(45deg, #00d4aa, #0ea5e9);
             height: 100%;
             width: 0%;
             transition: width 0.3s ease;
         }
-        
-        /* API测试区域 */
+
+
         .api-test-section {
             background: rgba(40, 40, 40, 0.5);
             border: 1px solid rgba(90, 90, 90, 0.3);
@@ -452,19 +451,19 @@
             margin-bottom: 15px;
             transition: all 0.3s;
         }
-        
+
         .api-test-section:hover {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
             border-color: rgba(255, 255, 255, 0.2);
         }
-        
+
         .test-controls {
             display: flex;
             gap: 10px;
             margin-bottom: 10px;
         }
-        
+
         .test-controls select {
             flex: 1;
             padding: 8px;
@@ -474,35 +473,33 @@
             border: 1px solid #444;
             font-size: 12px;
         }
-        
-        /* 结果显示区域 */
+
+
         .results-container {
             max-height: 300px;
             overflow-y: auto;
             overflow-x: hidden;
         }
-        
+
         .category {
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             background: rgba(0, 0, 0, 0.2);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 8px;
-            padding: 12px;
-            transition: all 0.3s;
+            padding: 10px;
+            transition: border-color 0.2s ease, background 0.2s ease;
             position: relative;
             overflow: hidden;
             width: 100%;
             box-sizing: border-box;
             max-width: 100%;
         }
-        
+
         .category:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
             border-color: rgba(255, 255, 255, 0.2);
             background: rgba(0, 0, 0, 0.3);
         }
-        
+
         .category-header {
             display: flex;
             justify-content: space-between;
@@ -510,13 +507,13 @@
             cursor: pointer;
             margin-bottom: 8px;
         }
-        
+
         .category-title {
             font-weight: 600;
             font-size: 14px;
             color: #fff;
         }
-        
+
         .count-badge {
             background: linear-gradient(45deg, #60a5fa, #3b82f6);
             color: #0b1220;
@@ -525,72 +522,68 @@
             font-size: 12px;
             font-weight: 600;
         }
-        
+
         .category-content {
-            max-height: 120px;
+            max-height: 180px;
             overflow-y: auto;
             overflow-x: hidden;
             font-size: 12px;
             width: 100%;
             box-sizing: border-box;
         }
-        
+
         .category-content.collapsed {
             display: none;
         }
-        
+
         .item {
-            padding: 6px 10px;
-            margin: 3px 0;
+            padding: 4px 9px;
+            margin: 2px 0;
             background: rgba(40, 40, 40, 0.5);
             border: 1px solid rgba(90, 90, 90, 0.3);
             border-radius: 4px;
             word-break: break-all;
             cursor: pointer;
-            transition: all 0.3s ease;
+            transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
             color: #ccc;
             position: relative;
-            overflow: hidden;
             width: 100%;
             box-sizing: border-box;
             max-width: 100%;
         }
-        
+
         .item:hover {
             background: rgba(255, 255, 255, 0.1);
             border-color: #3b82f6;
             color: #fff;
-            transform: translateX(3px);
         }
-        
-        .item::after {
-            content: '';
-            position: absolute;
-            left: -100%;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-            transition: all 0.5s;
-        }
-        
-        .item:hover::after {
-            left: 100%;
-        }
-        
+
         .item.copied {
             background: rgba(59, 130, 246, 0.16);
             border-color: #3b82f6;
             color: #fff;
         }
-        
-        /* 加载状态 */
+
+        .item-more {
+            text-align: center;
+            color: #60a5fa;
+            font-weight: 600;
+            background: rgba(59, 130, 246, 0.08);
+            border-style: dashed;
+        }
+
+        .item-more:hover {
+            background: rgba(59, 130, 246, 0.16);
+            color: #93c5fd;
+        }
+
+
         .loading {
             text-align: center;
             padding: 20px;
             color: #00d4aa;
         }
-        
+
         .loading::after {
             content: '';
             display: inline-block;
@@ -602,13 +595,13 @@
             animation: spin 1s linear infinite;
             margin-left: 10px;
         }
-        
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
-        /* 统计信息 */
+
+
         .stats {
             text-align: center;
             margin-top: 15px;
@@ -620,15 +613,15 @@
             transition: all 0.3s;
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
-        
+
         .stats:hover {
             background: rgba(0, 0, 0, 0.4);
             border-color: rgba(255, 255, 255, 0.1);
             transform: translateY(-2px);
         }
-        
-        /* 滚动条样式 */
-        /* 隐藏数字输入框的加减按钮 */
+
+
+
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button {
@@ -636,23 +629,23 @@
             appearance: none;
             margin: 0;
         }
-        
+
         input[type="number"] {
             -webkit-appearance: textfield;
             -moz-appearance: textfield;
             appearance: textfield;
         }
-        
-        /* 滚动条样式 */
+
+
         ::-webkit-scrollbar {
             width: 6px;
         }
-        
+
         ::-webkit-scrollbar-track {
             background: transparent;
             border-radius: 4px;
         }
-        
+
         ::-webkit-scrollbar-thumb {
             background: rgba(255, 255, 255, 0.6);
             border-radius: 4px;
@@ -660,8 +653,8 @@
         ::-webkit-scrollbar-thumb:hover {
             background: rgba(255, 255, 255, 0.8);
         }
-        
-        /* 模态框样式 */
+
+
         .modal {
             display: none;
             position: fixed;
@@ -672,7 +665,7 @@
             background: rgba(0, 0, 0, 0.8);
             z-index: 1000;
         }
-        
+
         .modal-content {
             position: relative;
             width: 90%;
@@ -685,7 +678,7 @@
             border: 1px solid #444;
             overflow-y: auto;
         }
-        
+
         .modal-close {
             position: absolute;
             top: 10px;
@@ -696,13 +689,13 @@
             font-size: 24px;
             cursor: pointer;
         }
-        
+
         .modal h3 {
             color: #00d4aa;
             margin-bottom: 15px;
         }
 
-        /* 导出弹窗特殊样式 */
+
         .export-modal-content {
             max-width: 500px;
         }
@@ -747,7 +740,7 @@
             transform: translateY(-2px);
         }
 
-        /* 当前域名显示 */
+
         .current-domain {
             margin-top: 10px;
             padding: 8px;
@@ -757,7 +750,7 @@
             color: #ccc;
         }
 
-        /* 设置页面样式 */
+
         .headers-controls {
             margin-bottom: 15px;
         }
@@ -826,7 +819,7 @@
             box-shadow: 0 0 5px rgba(0, 212, 170, 0.3);
         }
 
-        /* 脚本项布局调整 */
+
         .script-item {
             display: flex;
             align-items: center;
@@ -845,17 +838,17 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            max-width: 120px; /* 限制脚本名称宽度 */
+            max-width: 120px;
         }
 
-        /* 按钮容器 */
+
         .script-actions {
             display: flex;
             gap: 4px;
-            flex-shrink: 0; /* 防止按钮被压缩 */
+            flex-shrink: 0;
         }
 
-        /* 统一的按钮样式 */
+
         .inject-btn, .modify-btn, .delete-btn {
             padding: 4px 8px;
             border: 1px solid rgba(255, 255, 255, 0.2);
@@ -874,14 +867,14 @@
             flex-shrink: 0;
         }
 
-        /* 悬停效果 */
+
         .inject-btn:hover, .modify-btn:hover, .delete-btn:hover {
             background: rgba(255, 255, 255, 0.2);
             border-color: rgba(255, 255, 255, 0.3);
             transform: translateY(-1px);
         }
 
-        /* 激活状态 */
+
         .inject-btn:active, .modify-btn:active, .delete-btn:active {
             transform: translateY(0);
             background: rgba(255, 255, 255, 0.15);
@@ -923,8 +916,8 @@
             flex: 1;
         }
 
-        /* 设置页面输入框焦点样式 */
-        /* 设置页面输入框焦点样式 */
+
+
         .cookie-input-group textarea:focus,
         .regex-item textarea:focus {
             outline: none;
@@ -932,7 +925,7 @@
             box-shadow: 0 0 5px rgba(0, 212, 170, 0.3);
         }
 
-        /* 自定义正则弹窗样式 */
+
         .custom-regex-form .regex-item {
             margin-bottom: 15px;
         }
@@ -969,9 +962,9 @@
             border-color: rgba(231, 76, 60, 0.7) !important;
         }
 
-        /* 消息提示动画 */
-        /* 收放按钮样式 */
-        /* 收放按钮样式 */
+
+
+
         .toggle-buttons-container {
             text-align: center;
             margin: -5px 0 10px 0;
@@ -1019,19 +1012,19 @@
             padding: 0;
         }
 
-        /* 结果容器动态高度调整 */
+
         .results-container {
-            max-height: 300px;
+            max-height: 440px;
             overflow-y: auto;
             overflow-x: hidden;
             transition: max-height 0.3s ease;
         }
 
         .results-container.expanded {
-            max-height: 450px; /* 增加约150px，相当于三个按钮的高度 */
+            max-height: 620px;
         }
 
-        /* 页面内容区域调整 */
+
         .page-content {
             padding: 0 15px;
             position: relative;
@@ -1042,7 +1035,7 @@
             box-sizing: border-box;
         }
 
-        /* 消息提示动画 */
+
         @keyframes slideIn {
             from {
                 transform: translateX(100%);
@@ -1089,54 +1082,7 @@
             background: #f39c12;
         }
 
-        /* 消息提示动画 */
-        @keyframes slideIn {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
 
-        @keyframes slideOut {
-            from {
-                transform: translateX(0);
-                opacity: 1;
-            }
-            to {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-        }
-
-        .settings-message {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 10px 15px;
-            border-radius: 6px;
-            color: #fff;
-            font-size: 12px;
-            z-index: 10000;
-            animation: slideIn 0.3s ease;
-        }
-
-        .settings-message.success {
-            background: #00d4aa;
-        }
-
-        .settings-message.error {
-            background: #e74c3c;
-        }
-
-        .settings-message.warning {
-            background: #f39c12;
-        }
-
-        /* 轻量 UI 增强：隐藏装饰线，分类标题低饱和多色 */
         .ray, .line { display: none !important; }
         .results-container .category:nth-of-type(6n+1) .category-title { color: #93c5fd; }
         .results-container .category:nth-of-type(6n+2) .category-title { color: #a5b4fc; }
@@ -1145,7 +1091,7 @@
         .results-container .category:nth-of-type(6n+5) .category-title { color: #fca5a5; }
         .results-container .category:nth-of-type(6n+6) .category-title { color: #fde68a; }
 
-        /* Header mini buttons - gradient swipe style */
+
         .btn {
           --color: #00A97F;
           --color2: #212121;
@@ -1190,7 +1136,7 @@
           transform: scale(.98);
           filter: brightness(.9);
         }
-        /* JS注入页面样式 */
+
         .script-info {
             font-size: 11px;
             color: #888;
@@ -1223,7 +1169,7 @@
             cursor: default;
         }
 
-        /* JS注入脚本列表样式 */
+
         .header-input-group span {
             flex: 0 1 150px;
             overflow: hidden;
@@ -1233,8 +1179,8 @@
             font-size: 14px;
         }
 
-        /* 统一按钮样式 */
-        .inject-btn, .modify-btn, .delete-btn {
+
+        .inject-btn, .modify-btn, .delete-btn, .close-hook-btn {
             padding: 6px 12px;
             border: 1px solid #555;
             border-radius: 4px;
@@ -1253,6 +1199,103 @@
         .inject-btn:hover, .modify-btn:hover, .delete-btn:hover {
             background: #5a5a5a;
         }
+
+        .close-hook-btn {
+            background: linear-gradient(180deg, #16a34a, #15803d);
+            border-color: #22c55e;
+        }
+        .close-hook-btn:hover {
+            background: linear-gradient(180deg, #22c55e, #16a34a);
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #3b82f6, #6366f1);
+            border-radius: 8px;
+            border: 2px solid transparent;
+            background-clip: padding-box;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #60a5fa, #818cf8);
+            background-clip: padding-box;
+        }
+
+        .card {
+            background: linear-gradient(160deg, rgb(48, 48, 52) 0%, rgb(38, 38, 42) 100%);
+        }
+
+        .nav-tabs {
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+        .nav-tab.active {
+            background: linear-gradient(180deg, rgba(59, 130, 246, 0.28), rgba(59, 130, 246, 0.12));
+            border-color: rgba(96, 165, 250, 0.45);
+        }
+
+        .category {
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(0, 0, 0, 0.22));
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+        .category::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(180deg, #3b82f6, #6366f1);
+            opacity: 0.65;
+        }
+        .category-header {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding-bottom: 6px;
+        }
+        .category-title {
+            letter-spacing: 0.2px;
+        }
+
+        .count-badge {
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.35);
+            min-width: 18px;
+            text-align: center;
+            display: inline-block;
+        }
+
+        .item {
+            line-height: 1.45;
+        }
+        .item:hover {
+            box-shadow: inset 2px 0 0 #3b82f6;
+        }
+
+        .config-title {
+            background: linear-gradient(90deg, #93c5fd, #c4b5fd);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            font-weight: 700;
+        }
+
+        .results-container {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            align-items: start;
+        }
+        .results-container .category {
+            margin-bottom: 0;
+        }
+        .results-container > div:not(.category) {
+            grid-column: 1 / -1;
+        }
     </style>
 </head>
 <body>
@@ -1264,15 +1307,15 @@
             <div class="line bottoml"></div>
             <div class="line leftl"></div>
             <div class="line rightl"></div>
-            
-            <!-- 标题区域 -->
+
+
             <div class="header">
                 <h1>幻影</h1>
                 <div class="author-info">by Phantom&yihuo&Xuan8a1</div>
                 <div id="currentDomain" class="current-domain"></div>
             </div>
-            
-            <!-- 横向导航 -->
+
+
             <div class="nav-tabs">
                 <div class="nav-tab active" data-page="scan">扫描</div>
                 <div class="nav-tab" data-page="deep">深度扫描</div>
@@ -1281,11 +1324,11 @@
                 <div class="nav-tab" data-page="settings">设置</div>
                 <div class="nav-tab" data-page="about">关于</div>
             </div>
-            
-            <!-- 页面内容 -->
-            <!-- 页面内容 -->
+
+
+
             <div class="page-content">
-                <!-- 扫描页面 -->
+
                 <div class="page active" id="scan-page">
                     <div class="scan-buttons-container" id="scanButtonsContainer">
                         <button id="scanBtn" class="action-button scan-button">
@@ -1296,7 +1339,7 @@
                             <span class="border-bl"></span>
                             <span class="border-br"></span>
                         </button>
-                        
+
                         <button id="clearBtn" class="action-button">
                             <span class="text">清空结果</span>
                             <span class="shine"></span>
@@ -1305,7 +1348,7 @@
                             <span class="border-bl"></span>
                             <span class="border-br"></span>
                         </button>
-                        
+
                         <button id="exportBtn" class="action-button">
                             <span class="text">导出数据</span>
                             <span class="shine"></span>
@@ -1315,25 +1358,25 @@
                             <span class="border-br"></span>
                         </button>
                     </div>
-                    
-                    <!-- 收放按钮 -->
+
+
                     <div class="toggle-buttons-container">
                         <button id="toggleButtonsBtn" class="toggle-button">
                             <span class="toggle-icon">▲</span>
                             <span class="toggle-text">收起按钮</span>
                         </button>
                     </div>
-                    
+
                     <div id="loading" class="loading" style="display: none;">
                         正在扫描页面内容...
                     </div>
-                    
+
                     <div id="results" class="results-container">
-                        <!-- 新增的自定义正则类型显示区域将通过JavaScript动态生成 -->
+
                     </div>
                 </div>
-                
-                <!-- 深度扫描页面 -->
+
+
                 <div class="page" id="deep-page">
                     <button id="deepScanBtn" class="action-button">
                         <span class="text">深度递归扫描</span>
@@ -1343,7 +1386,7 @@
                         <span class="border-bl"></span>
                         <span class="border-br"></span>
                     </button>
-                    
+
                     <div id="deepScanConfig" class="deep-scan-config" style="display: none;">
                         <div class="config-title">深度扫描配置</div>
                         <div class="config-options">
@@ -1396,32 +1439,32 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- JS注入页面 -->
+
+
                 <div class="page" id="js-injection-page">
-                    <!-- 脚本管理 -->
+
                     <div class="api-test-section">
                         <div class="config-title">脚本管理</div>
 
-                        
-                        <!-- 脚本列表 - 完全模仿设置页面的请求头样式 -->
+
+
                         <div class="headers-controls">
                             <div id="scriptsContainer">
-                                <!-- 示例脚本项 - 完全按照header-input-group样式 -->
+
                                 <div class="header-input-group" style="display: none;" id="scriptTemplate">
                                     <span style="flex: 0 1 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 14px;">脚本名称</span>
                                     <button class="inject-btn" title="注入">注入</button>
                                     <button class="modify-btn" title="修改">修改</button>
                                     <button class="delete-btn" title="删除">删除</button>
                                 </div>
-                                
-                                <!-- 空状态提示 -->
+
+
                                 <div id="noScriptsMessage" style="padding: 20px; text-align: center; color: #888; font-size: 12px;">
                                     暂无保存的脚本，点击下方"添加脚本"按钮开始创建
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div class="test-controls" style="margin-top: 15px;">
                             <button id="addScriptBtn" class="action-button" style="flex: 1;">
                                 <span class="text">添加脚本</span>
@@ -1432,13 +1475,13 @@
                                 <span class="border-br"></span>
                             </button>
                         </div>
-                        
-                        <!-- 隐藏的文件输入 -->
+
+
                         <input type="file" id="importScriptsFile" accept=".json" style="display: none;">
                     </div>
                 </div>
-                
-                <!-- API测试页面 -->
+
+
                 <div class="page" id="test-page">
                     <div class="api-test-section">
                         <div class="config-title">批量API测试</div>
@@ -1474,7 +1517,7 @@
                             <label style="display: flex; align-items: center;">自定义域名/IP:</label>
                             <textarea id="customDomains" placeholder="输入自定义域名或IP地址，每行一个&#10;例如：&#10;192.168.1.100:8080&#10;192.168.1.1&#10;test.domain.com" style="width: 100%; padding: 10px; border-radius: 6px; background: rgba(0, 0, 0, 0.5); color: #fff; border: 1px solid #444; font-size: 12px; min-height: 80px; max-height: 120px; resize: vertical; font-family: monospace; line-height: 1.4;"></textarea>
                         </div>
-                        
+
                         <div class="test-controls" style="flex-direction: column; align-items: flex-start; gap: 8px;">
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <label style="display: flex; align-items: center;">自定义API路径:</label>
@@ -1494,10 +1537,10 @@
                         </button>
                     </div>
                 </div>
-                
-                <!-- 设置页面 -->
+
+
                 <div class="page" id="settings-page">
-                    <!-- 域名扫描设置 -->
+
                     <div class="api-test-section">
                         <div class="config-title"> 域名扫描设置</div>
                         <div class="config-options" style="flex-direction: column; gap: 12px; align-items: flex-start;">
@@ -1518,7 +1561,34 @@
                         </div>
                     </div>
 
-                    <!-- Vue 检测设置 -->
+
+                    <div class="api-test-section">
+                        <div class="config-title">第三方库屏蔽</div>
+                        <div class="config-options" style="flex-direction: column; gap: 12px; align-items: flex-start;">
+                            <label class="config-option" style="width: 100%; justify-content: space-between;">
+                                <span style="display: flex; align-items: center; gap: 8px;">
+                                    <span>屏蔽第三方 JS 库</span>
+                                    <small>(jQuery/Vue/React 等不抓取不解析)</small>
+                                </span>
+                                <input type="checkbox" id="skipVendorJs" checked style="margin-left: auto;">
+                            </label>
+                            <div class="config-option" style="width: 100%; flex-direction: column; align-items: flex-start; gap: 6px;">
+                                <span style="display: flex; align-items: center; gap: 8px;">
+                                    <span>自定义屏蔽规则</span>
+                                    <small>(每行一条，正则或文件名片段)</small>
+                                </span>
+                                <textarea id="customVendorPatterns" placeholder="如 sentry 或 ^common[.-]" style="width: 100%; min-height: 70px; padding: 8px; background: rgba(0,0,0,0.5); border: 1px solid #444; border-radius: 4px; color: #fff; font-size: 12px; resize: vertical;"></textarea>
+                            </div>
+                        </div>
+                        <div class="headers-actions" style="margin-top: 10px;">
+                            <button id="saveVendorJsSettingsBtn" class="action-button">
+                                <span class="text">保存屏蔽设置</span>
+                                <span class="shine"></span>
+                            </button>
+                        </div>
+                    </div>
+
+
                     <div class="api-test-section">
                         <div class="config-title">Vue 检测设置</div>
                         <div class="config-options" style="flex-direction: column; gap: 12px; align-items: flex-start;">
@@ -1559,12 +1629,12 @@
                         </div>
                     </div>
 
-                    <!-- 请求头设置 -->
+
                     <div class="api-test-section">
                         <div class="config-title">请求头设置</div>
                         <div class="headers-controls">
                             <div id="headersContainer">
-                                <!-- 动态生成的请求头输入框将在这里显示 -->
+
                             </div>
                             <div class="headers-actions">
                                 <button id="addHeaderBtn" class="action-button">
@@ -1605,7 +1675,7 @@
                         </div>
                     </div>
 
-                    <!-- 添加自定义正则按钮：移动至“已添加的自定义正则配置”框下方 -->
+
                     <button id="addCustomRegexBtn" class="action-button">
                         <span class="text">添加自定义正则</span>
                         <span class="shine"></span>
@@ -1615,7 +1685,7 @@
                         <span class="border-br"></span>
                     </button>
 
-                    <!-- 正则配置 -->
+
                     <div class="api-test-section">
                         <div class="config-title">正则表达式配置</div>
                         <div class="regex-config">
@@ -1732,30 +1802,17 @@
                         </div>
                     </div>
 
-                    <!-- 数据管理 -->
-                    <!-- <div class="api-test-section">
-                        <div class="config-title">🗑️ 数据管理</div>
-                        <div style="margin-bottom: 10px; color: #ccc; font-size: 12px;">
-                            清空所有页面的扫描数据，包括基础扫描结果、深度扫描结果和相关配置。
-                        </div>
-                        <button id="clearAllDataBtn" class="action-button" style="background: linear-gradient(45deg, #e74c3c, #c0392b);">
-                            <span class="text">清空全部数据</span>
-                            <span class="shine"></span>
-                            <span class="border-tl"></span>
-                            <span class="border-tr"></span>
-                            <span class="border-bl"></span>
-                            <span class="border-br"></span>
-                        </button>
-                    </div> -->
+
+
                 </div>
 
-                <!-- 关于页面 -->
+
                 <div class="page" id="about-page">
                     <div class="api-test-section">
                         <div class="config-title">工具信息</div>
                         <div style="color: #ccc; line-height: 1.6; font-size: 13px;">
                             <p><strong>工具名称:</strong> 幻影</p>
-                            <p><strong>版本:</strong> 1.8.0</p>
+                            <p><strong>版本:</strong> 1.8.1</p>
                             <p><strong>作者:</strong> Phantom&yihuo&Xuan8a1</p>
                             <p><strong>site:</strong> https://www.cn-fnst.top/</p>
                             <p><strong>site:</strong> https://blog.h-acker.cn/</p>
@@ -1795,7 +1852,7 @@
         </div>
     </div>
 
-    <!-- 导出格式选择弹窗 -->
+
     <div id="exportModal" class="modal" style="display: none;">
         <div class="modal-content export-modal-content">
             <button id="closeExportModal" class="modal-close">×</button>
@@ -1830,7 +1887,7 @@
         </div>
     </div>
 
-    <!-- 自定义正则配置弹窗 -->
+
     <div id="customRegexModal" class="modal" style="display: none;">
         <div class="modal-content" style="max-width: 500px;">
             <button id="closeCustomRegexModal" class="modal-close">×</button>
@@ -1869,8 +1926,8 @@
             </div>
         </div>
     </div>
-    
-    <!-- 添加脚本弹窗 -->
+
+
     <div id="addScriptModal" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -1912,7 +1969,7 @@
         </div>
     </div>
 
-    <!-- 详细简介查看窗口 -->
+
     <div id="scriptDetailModal" class="modal" style="display: none;">
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
@@ -1927,14 +1984,7 @@
                     <label>脚本描述:</label>
                     <div id="scriptDetailDesc" style="padding: 12px; background: rgba(0, 0, 0, 0.3); border-radius: 4px; color: #fff; font-size: 12px; margin-top: 5px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4; user-select: text; cursor: text;"></div>
                 </div>
-                <!--<div class="form-group">
-                    <label>创建时间:</label>
-                    <div id="scriptDetailCreated" style="padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 4px; color: #aaa; font-size: 12px; margin-top: 5px;"></div>
-                </div>
-                <div class="form-group" id="scriptDetailUpdatedGroup" style="display: none;">
-                    <label>更新时间:</label>
-                    <div id="scriptDetailUpdated" style="padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 4px; color: #aaa; font-size: 12px; margin-top: 5px;"></div>
-                </div>-->
+
             </div>
             <div class="modal-footer">
                 <button id="copyDescBtn" class="action-button" style="flex: 1;">
@@ -1956,8 +2006,8 @@
             </div>
         </div>
     </div>
-    
-    <!-- 按顺序引入所有模块 -->
+
+
     <script src="src/core/IndexedDBManager.js"></script>
     <script src="src/scanner/PatternExtractor.js"></script>
     <script src="src/scanner/ContentExtractor.js"></script>
@@ -1968,10 +2018,10 @@
     <script src="src/api/ApiTester.js"></script>
     <script src="src/utils/ExportManager.js"></script>
     <script src="src/utils/SettingsManager.js"></script>
-    <script src="src/core/jshook-presets.js"></script>
+    <script src="src/core/jshook.js"></script>
     <script src="src/core/JSInjector.js"></script>
-    
-    <!-- AST 敏感信息提取模块 -->
+
+
     <script src="libs/acorn.min.js"></script>
     <script src="src/scanner/ast/parser.js"></script>
     <script src="src/scanner/ast/utils/hash.js"></script>
@@ -1986,7 +2036,7 @@
     <script src="src/scanner/ast/utils/ResultMerger.js"></script>
     <script src="src/scanner/ast/ASTBridge.js"></script>
     <script src="src/scanner/ast/index.js"></script>
-    
+
     <script src="src/main.js"></script>
 </body>
 </html>
