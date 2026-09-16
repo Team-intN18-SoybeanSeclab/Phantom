@@ -32,9 +32,9 @@
 幻影是一款专为SRC漏洞挖掘场景设计的**浏览器扩展工具**，采用现代化的技术架构，为安全研究人员提供高效、智能的页面信息收集解决方案。
 
 ## 开发者
-Phantom ，
-yihuo ，
-，Junzhe(Kosef) Wang
+- Phantom 
+- yihuo 
+- Junzhe(Kosef) Wang
 
 ### 核心优势
 
