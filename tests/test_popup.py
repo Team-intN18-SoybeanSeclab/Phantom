@@ -201,6 +201,75 @@ class PopupTests(unittest.TestCase):
         self.popup.evaluate("srcMiner.siteInfo.configure('')")
         self.assertEqual(self.worker.evaluate("chrome.storage.session.get(['phantomIcpKey','phantomIcpLast'])"), {})
 
+    def fingerprints(self, markup):
+        self.target.set_content('<!doctype html>' + markup, wait_until="domcontentloaded")
+        self.popup.evaluate("srcMiner.siteInfo.refresh()")
+        return tuple(self.popup.locator('#' + field).text_content()
+                     for field in ('siteCms', 'siteFrameworks', 'siteThemes'))
+
+    def test_zibll_without_generator(self):
+        # Public declarations from the theme author's homepage (https://www.zibll.com/).
+        self.target.set_content("""
+            <link rel="stylesheet" id="_main-css" href="/wp-content/themes/zibll/css/main.min.css">
+            <body class="home wp-theme-zibll"><script src="/wp-content/themes/zibll/js/loader.js"></script>
+        """)
+        self.popup.evaluate("document.querySelector('[data-page=site]').click()")
+        expect(self.popup.locator("#siteCms")).to_have_text("WordPress")
+        expect(self.popup.locator("#siteThemes")).to_have_text("子比主题（Zibll）")
+        for markup in [
+            '<link rel="stylesheet" href="//cdn.example.org/blog/wp-content/themes/%7Aibll/style.css?ver=8">',
+            '<base href="/blog/"><script src="wp-content/themes/zibll/js/loader.js#cached"></script>',
+            '<link rel="preload" as="style" href="/static/themes/zibll/css/main.min.css">',
+            '<link rel="stylesheet" href="//cdn.example.org/assets/zibll/css/main.min.css">'
+            '<script src="//cdn.example.org/assets/zibll/js/loader.js"></script>',
+            '<body class="wp-theme-zibll">',
+        ]:
+            with self.subTest(markup=markup):
+                cms, _, themes = self.fingerprints(markup)
+                self.assertEqual((cms, themes), ("WordPress", "子比主题（Zibll）"))
+
+    def test_parent_child_and_unknown_wordpress_themes(self):
+        cms, _, themes = self.fingerprints("""
+            <link rel="stylesheet" href="/wp-content/themes/astra/demo.css">
+            <body class="wp-child-theme-my-child wp-theme-zibll">
+        """)
+        self.assertEqual(cms, "WordPress")
+        self.assertEqual(themes, "子比主题（Zibll）、my-child（子主题）")
+        cms, _, themes = self.fingerprints("""
+            <link rel="stylesheet" href="/wp-content/themes/my-parent/style.css">
+            <link rel="stylesheet" href="/wp-content/themes/my-child/style.css">
+            <body class="wp-child-theme-my-child">
+        """)
+        self.assertEqual((cms, themes), ("WordPress", "my-parent、my-child（子主题）"))
+
+    def test_wappalyzer_generator_dom_and_script_markers(self):
+        cases = [
+            ('<meta name="GENERATOR" content="concrete5 - 8.5">', 'Concrete CMS', '未发现公开标记'),
+            ('<meta name="generator" content="Discuz! X3.5">', 'Discuz! X', '未发现公开标记'),
+            ('<link rel="https://api.w.org/" href="/?rest_route=/">', 'WordPress', '未发现公开标记'),
+            ('<script type="application/json" data-drupal-selector="drupal-settings-json"></script>'
+             '<script src="/_next/static/chunks/app.js"></script>', 'Drupal', 'Next.js、React'),
+            ('<link rel="modulepreload" href="/_nuxt/entry.js">', '未发现公开标记', 'Nuxt、Vue'),
+            ('<link rel="stylesheet" href="/_app/immutable/assets/app.css">', '未发现公开标记', 'Svelte、SvelteKit'),
+        ]
+        for markup, cms, frameworks in cases:
+            with self.subTest(markup=markup):
+                self.assertEqual(self.fingerprints(markup), (cms, frameworks, '未发现公开标记'))
+
+    def test_mentions_links_and_query_strings_are_not_fingerprints(self):
+        markup = """
+            <link rel="canonical" href="https://demo.example.org/wp-content/themes/zibll/">
+            <link rel="stylesheet" href="/css/main.css?redirect=/wp-content/themes/zibll/css/main.min.css">
+            <link rel="stylesheet" href="https://first.example.org/zibll/css/main.min.css">
+            <script src="https://second.example.org/zibll/js/loader.js"></script>
+            <script src="/app.js?from=/_next/static/app.js"></script>
+            <body class="wp-themeish-zibll"><a href="/wp-content/themes/zibll/style.css">WordPress 子比主题</a>
+            <code>&lt;body class="wp-theme-zibll"&gt;</code>
+            <img src="/wp-content/themes/astra/screenshot.png">
+        """
+        self.assertEqual(self.fingerprints(markup), ('未发现公开标记',) * 3)
+        self.assertEqual(self.icp_requests, [])
+
     def test_lookup_failure_is_distinct_from_missing_record(self):
         self.icp_reply = {"StateCode": 10001, "Reason": "bad key"}
         self.popup.evaluate("srcMiner.siteInfo.configure('fixture-key')")

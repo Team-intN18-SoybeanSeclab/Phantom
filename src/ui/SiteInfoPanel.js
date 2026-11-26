@@ -1,29 +1,3 @@
-// Executed in the isolated world of the selected tab. Keep all DOM rules local to this function.
-function readSiteDeclarations() {
-    const generators = Array.from(document.head?.querySelectorAll('meta[name="generator" i]') || [],
-        meta => meta.content.trim().toLowerCase());
-    const declares = name => generators.some(value =>
-        value === name || (value.startsWith(name) && !/[a-z0-9]/.test(value.charAt(name.length))));
-    const cms = ['WordPress', 'Drupal', 'Joomla', 'Ghost', 'TYPO3', 'MediaWiki', 'Hugo', 'Hexo', 'Jekyll']
-        .filter(name => declares(name.toLowerCase()));
-    const frameworkMarkers = [
-        ['Angular', '[ng-version]'], ['Vue', '[data-v-app]'], ['React', '[data-reactroot]'],
-        ['Next.js', 'script#__NEXT_DATA__'], ['Nuxt', 'script#__NUXT_DATA__,script[data-nuxt-data]'],
-        ['Astro', 'astro-island']
-    ];
-    const frameworks = frameworkMarkers.filter(([name, selector]) =>
-        declares(name.toLowerCase()) || document.querySelector(selector)).map(([name]) => name);
-
-    const filings = new Set();
-    for (const element of document.querySelectorAll('footer,[role="contentinfo"],a[href*="miit.gov.cn" i]')) {
-        const text = element.textContent.slice(0, 12000).normalize('NFKC');
-        for (const [filing] of text.matchAll(/[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼蜀黔滇陇]\s*ICP\s*备\s*\d{5,12}\s*号(?:\s*-\s*\d+)?/gi)) {
-            filings.add(filing.replace(/\s/g, ''));
-        }
-    }
-    return { hostname: location.hostname, frameworks, cms, filings: Array.from(filings) };
-}
-
 class IcpServiceError extends Error {}
 
 class SiteInfoPanel {
@@ -61,7 +35,7 @@ class SiteInfoPanel {
         const set = (id, value) => {
             if (this.revision === revision) document.getElementById(id).textContent = value;
         };
-        for (const id of ['siteHost', 'siteFrameworks', 'siteCms', 'siteDeclaredIcp', 'siteIcpResult']) set(id, '—');
+        for (const id of ['siteHost', 'siteFrameworks', 'siteCms', 'siteThemes', 'siteDeclaredIcp', 'siteIcpResult']) set(id, '—');
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             if (this.revision !== revision) return;
@@ -73,16 +47,19 @@ class SiteInfoPanel {
             set('siteHost', hostname);
             const readPage = async () => {
                 try {
+                    const { readSiteDeclarations, identifySite, pageQueries } = await import('./SiteFingerprints.js');
                     const [frame] = await chrome.scripting.executeScript({
-                        target: { tabId: tab.id }, func: readSiteDeclarations
+                        target: { tabId: tab.id }, func: readSiteDeclarations, args: [pageQueries]
                     });
                     const info = frame?.result;
                     if (info?.hostname !== hostname) throw new Error();
-                    set('siteFrameworks', info.frameworks.join('、') || '未发现公开标记');
-                    set('siteCms', info.cms.join('、') || '未发现公开标记');
                     set('siteDeclaredIcp', info.filings.join('、') || '未找到页面公示号');
+                    const { frameworks, cms, themes } = identifySite(info);
+                    set('siteFrameworks', frameworks.join('、') || '未发现公开标记');
+                    set('siteCms', cms.join('、') || '未发现公开标记');
+                    set('siteThemes', themes.join('、') || '未发现公开标记');
                 } catch {
-                    for (const id of ['siteFrameworks', 'siteCms', 'siteDeclaredIcp']) set(id, '无法读取当前页面');
+                    for (const id of ['siteFrameworks', 'siteCms', 'siteThemes', 'siteDeclaredIcp']) set(id, '无法读取当前页面');
                 }
             };
             set('siteIcpResult', '正在检查…');
