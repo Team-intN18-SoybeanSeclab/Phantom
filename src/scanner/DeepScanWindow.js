@@ -219,23 +219,21 @@ class DeepScanWindow {
         if (!newResults) return;
 
 
-        Object.keys(newResults).forEach(key => {
-            if (!this.srcMiner.results[key]) {
-                this.srcMiner.results[key] = [];
-            }
-
-
-            const existingSet = new Set(this.srcMiner.results[key]);
-            newResults[key].forEach(item => {
-                if (item && !existingSet.has(item)) {
-                    this.srcMiner.results[key].push(item);
+        const results = this.srcMiner.deepScanResults;
+        for (const [key, items] of Object.entries(newResults)) {
+            if (!Array.isArray(items)) continue;
+            const category = results[key] ||= [];
+            const values = new Set(category.map(item => item?.value ?? item));
+            for (const item of items) {
+                const value = item?.value ?? item;
+                if (value && !values.has(value)) {
+                    category.push(item);
+                    values.add(value);
                 }
-            });
-        });
-
-
+            }
+        }
+        this.srcMiner.resultSource = 'deep';
         this.srcMiner.displayResults();
-        this.srcMiner.saveResults();
 
         console.log(' 主页面结果已更新，当前结果数量:',
             Object.values(this.srcMiner.results).reduce((sum, arr) => sum + (arr?.length || 0), 0));
@@ -299,21 +297,7 @@ class DeepScanWindow {
         }
 
 
-        const completionState = {
-            deepScanComplete: true,
-            deepScanCompletedAt: Date.now(),
-            deepScanResultsCount: Object.values(this.srcMiner.results).reduce((sum, arr) => sum + (arr?.length || 0), 0)
-        };
-
-
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0] && tabs[0].url) {
-                const baseUrl = new URL(tabs[0].url).origin;
-                IndexedDBManager.saveDeepScanState(baseUrl, completionState);
-            }
-        });
     }
-
 
     handleScanError(errorData) {
         console.error(' 深度扫描出错:', errorData);

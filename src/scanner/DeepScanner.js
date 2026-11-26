@@ -1,6 +1,8 @@
 class DeepScanner {
     constructor(srcMiner) {
         this.srcMiner = srcMiner;
+        this.scanTab = null;
+        this.resultsDirty = false;
 
         this.urlContentCache = new Map();
 
@@ -278,10 +280,7 @@ class DeepScanner {
         this.urlContentCache.clear();
 
 
-        this.srcMiner.deepScanResults = {};
-        Object.keys(this.srcMiner.results).forEach(key => {
-            this.srcMiner.deepScanResults[key] = [...(this.srcMiner.results[key] || [])];
-        });
+        this.srcMiner.deepScanResults = structuredClone(this.srcMiner.results);
 
         this.srcMiner.currentDepth = 0;
 
@@ -311,6 +310,7 @@ class DeepScanner {
             configInputs.forEach(input => input.disabled = true);
         }
 
+        let completed = false;
         try {
 
         if (window.astBridge && !window.astBridge.initialized) {
@@ -323,6 +323,7 @@ class DeepScanner {
         }
 
 
+        this.scanTab = null;
         this.throttleConfig.lastDisplayUpdate = 0;
         this.throttleConfig.lastStorageUpdate = 0;
         this.throttleConfig.pendingStorageUpdate = false;
@@ -355,6 +356,8 @@ class DeepScanner {
                 throw new Error('无法获取当前页面URL');
             }
 
+            this.scanTab = tab;
+            this.resultsDirty = true;
             const baseUrl = new URL(tab.url).origin;
             const currentUrl = tab.url;
 
@@ -385,37 +388,9 @@ class DeepScanner {
             });
 
 
-            await this.flushPendingUpdates();
-
-
-            this.srcMiner.results = this.srcMiner.deepScanResults;
+            this.srcMiner.resultSource = 'deep';
             this.srcMiner.displayResults();
-            this.srcMiner.saveResults();
-
-
-            const [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (currentTab && currentTab.url) {
-                const urlObj = new URL(currentTab.url);
-                const fullUrl = `https://${urlObj.hostname}`;
-
-                if (!window.indexedDBManager) {
-                    window.indexedDBManager = new IndexedDBManager();
-                }
-
-                const deepState = {
-                    running: false,
-                    complete: true,
-                    timestamp: Date.now(),
-                    url: currentTab.url,
-                    scannedUrls: Array.from(this.srcMiner.scannedUrls || []),
-                    currentDepth: this.srcMiner.currentDepth,
-                    maxDepth: this.srcMiner.maxDepth,
-                    concurrency: this.srcMiner.concurrency
-                };
-
-                await window.indexedDBManager.saveDeepScanState(fullUrl, deepState);
-            }
-
+            completed = true;
             this.showDeepScanComplete();
 
         } catch (error) {
@@ -424,9 +399,8 @@ class DeepScanner {
         } finally {
 
             this.srcMiner.deepScanRunning = false;
-
-
-            this.srcMiner.saveResults();
+            await this.srcMiner.pendingResultSave;
+            await this._saveToStorageAsync();
 
             if (deepScanBtn) {
                 const deepScanBtnText = deepScanBtn.querySelector('.text');
@@ -461,18 +435,10 @@ class DeepScanner {
             this.urlContentCache.clear();
 
 
-            const [completedTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (completedTab && completedTab.url) {
-                const urlObj = new URL(completedTab.url);
-                const fullUrl = `https://${urlObj.hostname}`;
-
-                if (!window.indexedDBManager) {
-                    window.indexedDBManager = new IndexedDBManager();
-                }
-
+            if (this.scanTab) {
                 const finalState = {
                     running: false,
-                    complete: true,
+                    complete: completed,
                     lastCompleted: Date.now(),
                     scannedUrls: Array.from(this.srcMiner.scannedUrls || []),
                     currentDepth: this.srcMiner.currentDepth,
@@ -480,7 +446,7 @@ class DeepScanner {
                     concurrency: this.srcMiner.concurrency
                 };
 
-                await window.indexedDBManager.saveDeepScanState(fullUrl, finalState);
+                await window.IndexedDBManager.saveDeepScanState(this.scanTab.url, finalState);
             }
         }
     }
@@ -604,7 +570,7 @@ class DeepScanner {
 
 
 
-            this.srcMiner.results = this.srcMiner.deepScanResults;
+            this.srcMiner.resultSource = 'deep';
             this.srcMiner.displayResults();
 
 
@@ -1053,7 +1019,8 @@ class DeepScanner {
 
 
         if (hasNewData) {
-            this.srcMiner.results = this.srcMiner.deepScanResults;
+            this.resultsDirty = true;
+            this.srcMiner.resultSource = 'deep';
         }
 
 
@@ -1087,42 +1054,15 @@ class DeepScanner {
 
 
     async _saveToStorageAsync() {
+        if (!this.resultsDirty || !this.scanTab) return;
+        this.resultsDirty = false;
         try {
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (!tab || !tab.url) return;
-
-            if (!window.indexedDBManager) {
-                window.indexedDBManager = new IndexedDBManager();
-            }
-
-            const urlObj = new URL(tab.url);
-            const fullUrl = `https://${urlObj.hostname}`;
-            const pageTitle = document.title || tab.title || 'Unknown Page';
-
-
-            await Promise.all([
-                window.indexedDBManager.saveScanResults(fullUrl, this.srcMiner.deepScanResults, tab.url, pageTitle),
-                window.indexedDBManager.saveDeepScanResults(fullUrl, this.srcMiner.deepScanResults, tab.url, pageTitle)
-            ]);
-
-            console.log(' 深度扫描数据已保存，当前结果数量:',
-                Object.values(this.srcMiner.deepScanResults).reduce((sum, arr) => sum + (arr?.length || 0), 0));
+            await this.srcMiner.saveResults('deep', this.scanTab);
         } catch (error) {
-            console.error(' 保存深度扫描结果到IndexedDB失败:', error);
+            this.resultsDirty = true;
+            console.error('保存深度扫描结果失败:', error);
         }
     }
-
-
-    async flushPendingUpdates() {
-
-        this.srcMiner.displayResults();
-
-
-        await this._saveToStorageAsync();
-
-        console.log(' 已刷新所有待处理的更新');
-    }
-
 
     applyFilters(results, content, sourceUrl = '未知URL') {
 
@@ -1260,40 +1200,6 @@ class DeepScanner {
         }
         deepScanBtn.style.background = 'rgba(0, 212, 170, 0.3)';
 
-
-        this.srcMiner.saveResults();
-
-
-        const saveCompletionState = async () => {
-            try {
-                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                if (tab && tab.url) {
-                    const urlObj = new URL(tab.url);
-                    const fullUrl = `https://${urlObj.hostname}`;
-
-                    if (!window.indexedDBManager) {
-                        window.indexedDBManager = new IndexedDBManager();
-                    }
-
-                    const completionState = {
-                        running: false,
-                        complete: true,
-                        completedAt: Date.now(),
-                        resultsCount: Object.values(this.srcMiner.results).reduce((sum, arr) => sum + (arr?.length || 0), 0),
-                        scannedUrls: Array.from(this.srcMiner.scannedUrls || []),
-                        currentDepth: this.srcMiner.currentDepth,
-                        maxDepth: this.srcMiner.maxDepth,
-                        concurrency: this.srcMiner.concurrency
-                    };
-
-                    await window.indexedDBManager.saveDeepScanState(fullUrl, completionState);
-                }
-            } catch (error) {
-                console.error('保存深度扫描完成状态失败:', error);
-            }
-        };
-
-        saveCompletionState();
 
         setTimeout(() => {
             if (deepScanBtnText) {

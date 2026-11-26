@@ -1,23 +1,12 @@
 class DisplayManager {
     constructor(srcMiner) {
         this.srcMiner = srcMiner;
+        this.renderVersion = 0;
     }
 
     async displayResults() {
-
-        if (this.srcMiner.results && Object.keys(this.srcMiner.results).length > 0) {
-            this.srcMiner.saveResults();
-        }
-
-
-        if (!this.srcMiner.results || Object.keys(this.srcMiner.results).length === 0) {
-
-            await this.srcMiner.loadResults();
-            if (!this.srcMiner.results || Object.keys(this.srcMiner.results).length === 0) {
-
-            }
-        }
-
+        const version = ++this.renderVersion;
+        const results = this.srcMiner.results;
         const resultsDiv = document.getElementById('results');
 
 
@@ -119,7 +108,7 @@ class DisplayManager {
         await this.loadFiltersIfNeeded();
 
 
-        const filteredResults = await this.applyFiltersToResults(this.srcMiner.results);
+        const filteredResults = await this.applyFiltersToResults(results);
 
 
         if (filteredResults) {
@@ -179,6 +168,7 @@ class DisplayManager {
             }
         }
 
+        if (version !== this.renderVersion) return;
         resultsDiv.innerHTML = '';
         let totalCount = 0;
         const frag = document.createDocumentFragment();
@@ -194,21 +184,10 @@ class DisplayManager {
 
 
         if (totalCount === 0) {
-            resultsDiv.innerHTML = `
-                <div style="padding: 20px; text-align: center; color: #00d4aa;">
-                    <h3>扫描完成</h3>
-                    <p>当前页面未发现可提取的信息</p>
-                    <p style="font-size: 12px; margin-top: 10px; opacity: 0.7;">
-                        这可能是因为：<br>
-                        • 页面内容较少<br>
-                        • 信息已被加密或混淆<br>
-                        • 页面使用了复杂的动态加载<br>
-                        • 尝试使用深度扫描获取更多信息
-                    </p>
-                </div>
-            `;
+            const empty = document.createElement('p');
+            empty.textContent = '暂无该类型的扫描结果';
+            resultsDiv.replaceChildren(empty);
         }
-
 
         const scanMode = this.srcMiner.deepScanRunning ? '深度扫描中' : '标准扫描';
         const scannedCount = this.srcMiner.scannedUrls ? this.srcMiner.scannedUrls.size : 1;

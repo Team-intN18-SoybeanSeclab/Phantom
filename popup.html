@@ -1296,6 +1296,32 @@
         .results-container > div:not(.category) {
             grid-column: 1 / -1;
         }
+        .site-panel, .update-dialog {
+            color: #eee;
+            background: #292a2d;
+            border: 1px solid #515258;
+            border-radius: 8px;
+            padding: 16px;
+        }
+        .site-panel dl { display: grid; grid-template-columns: 110px 1fr; gap: 12px; font-size: 13px; }
+        .site-panel dt, .result-source { color: #c6c8cd; }
+        .site-panel dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
+        .site-panel details { margin-top: 18px; }
+        .site-panel summary { cursor: pointer; }
+        .site-panel p { margin: 9px 0; line-height: 1.5; font-size: 12px; }
+        .site-panel input { width: 100%; margin: 6px 0; }
+        .site-panel a, .update-dialog a { color: #95c4ff; }
+        .site-panel button, .update-dialog button, .result-source select, .site-panel input {
+            padding: 5px 9px; border: 1px solid #72757a; border-radius: 4px; background: #25262a; color: #fff;
+        }
+        .result-source { display: block; margin: 8px 0; font-size: 12px; }
+        .site-panel label { display: block; font-size: 13px; }
+        .site-panel button, .update-dialog button { cursor: pointer; }
+        .update-dialog { margin: auto; width: min(360px, 90%); max-height: 85vh; overflow: auto; }
+        .update-dialog::backdrop { background: rgba(0, 0, 0, .7); }
+        .update-dialog h2 { font-size: 18px; }
+        .update-dialog p { margin: 12px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+        .update-dialog form { margin-top: 14px; }
     </style>
 </head>
 <body>
@@ -1318,6 +1344,7 @@
 
             <div class="nav-tabs">
                 <div class="nav-tab active" data-page="scan">扫描</div>
+                <div class="nav-tab" data-page="site">站点信息</div>
                 <div class="nav-tab" data-page="deep">深度扫描</div>
                 <div class="nav-tab" data-page="test">API测试</div>
                 <div class="nav-tab" data-page="js-injection">JS注入</div>
@@ -1371,11 +1398,42 @@
                         正在扫描页面内容...
                     </div>
 
+                    <label class="result-source">显示结果
+                        <select id="resultSource">
+                            <option value="basic">基础扫描</option>
+                            <option value="deep">深度扫描</option>
+                        </select>
+                    </label>
                     <div id="results" class="results-container">
 
                     </div>
                 </div>
 
+
+                <div class="page" id="site-page">
+                    <section class="site-panel" aria-label="当前页面的站点信息">
+                        <dl aria-live="polite">
+                            <dt>当前域名</dt><dd id="siteHost">—</dd>
+                            <dt>框架</dt><dd id="siteFrameworks">—</dd>
+                            <dt>CMS / 生成器</dt><dd id="siteCms">—</dd>
+                            <dt>页面公示备案号</dt><dd id="siteDeclaredIcp">—</dd>
+                            <dt>站长之家查询</dt><dd id="siteIcpResult">—</dd>
+                        </dl>
+                        <p><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">工信部备案查询</a></p>
+                        <details>
+                            <summary>自动查询设置</summary>
+                            <p>启用后，打开「站点信息」会将当前域名提交给站长之家，可能使用接口额度。密钥仅保留在本次浏览器会话。</p>
+                            <form id="siteIcpForm">
+                                <label for="siteIcpKey">站长之家备案查询 API Key</label>
+                                <input id="siteIcpKey" type="password" autocomplete="off" required maxlength="256">
+                                <button type="submit">启用自动查询</button>
+                                <button type="button" id="siteIcpDisable">停用并清除密钥</button>
+                                <a href="https://api.chinaz.com/ApiDetails/Domain" target="_blank" rel="noopener noreferrer">接口说明</a>
+                            </form>
+                            <p id="siteIcpSettingStatus" role="status"></p>
+                        </details>
+                    </section>
+                </div>
 
                 <div class="page" id="deep-page">
                     <button id="deepScanBtn" class="action-button">
@@ -1812,7 +1870,7 @@
                         <div class="config-title">工具信息</div>
                         <div style="color: #ccc; line-height: 1.6; font-size: 13px;">
                             <p><strong>工具名称:</strong> 幻影</p>
-                            <p><strong>版本:</strong> 1.8.1</p>
+                            <p><strong>版本:</strong> 1.8.2</p>
                             <p><strong>作者:</strong> Phantom&yihuo&Xuan8a1</p>
                             <p><strong>site:</strong> https://www.cn-fnst.top/</p>
                             <p><strong>site:</strong> https://blog.h-acker.cn/</p>
@@ -2008,6 +2066,15 @@
     </div>
 
 
+    <dialog id="updateDialog" class="update-dialog" aria-labelledby="updateHeading">
+        <h2 id="updateHeading">发现新版本 <span data-version></span></h2>
+        <p data-title></p>
+        <p data-notes></p>
+        <a href="https://github.com/Team-intN18-SoybeanSeclab/Phantom/releases" target="_blank" rel="noopener noreferrer">查看项目发布页</a>
+        <form method="dialog"><button>关闭</button></form>
+    </dialog>
+
+    <script src="src/ui/SiteInfoPanel.js"></script>
     <script src="src/core/IndexedDBManager.js"></script>
     <script src="src/scanner/PatternExtractor.js"></script>
     <script src="src/scanner/ContentExtractor.js"></script>

@@ -861,16 +861,6 @@ class SettingsManager {
 
 
 
-            let originalSaveResults = null;
-            if (window.srcMiner && typeof window.srcMiner.saveResults === 'function') {
-
-                originalSaveResults = window.srcMiner.saveResults;
-                window.srcMiner.saveResults = () => {
-
-                };
-            }
-
-
             if (window.srcMiner) {
 
 
@@ -879,7 +869,10 @@ class SettingsManager {
 
 
 
-                window.srcMiner.results = {};
+                window.srcMiner.resultRevision++;
+                await window.srcMiner.pendingResultSave;
+                window.srcMiner.resultSource = 'basic';
+                window.srcMiner.basicResults = {};
                 window.srcMiner.deepScanResults = {};
                 window.srcMiner.scannedUrls = new Set();
                 window.srcMiner.pendingUrls = new Set();
@@ -1022,14 +1015,6 @@ class SettingsManager {
 
             } catch (error) {
                 console.error(' 获取IndexedDB统计失败:', error);
-            }
-
-
-            if (originalSaveResults && window.srcMiner) {
-                setTimeout(() => {
-                    window.srcMiner.saveResults = originalSaveResults;
-
-                }, 1000);
             }
 
 

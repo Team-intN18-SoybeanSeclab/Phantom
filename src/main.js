@@ -1,6 +1,11 @@
 class ILoveYouTranslucent7 {
     constructor() {
-        this.results = {};
+        this.basicResults = {};
+        this.resultSource = 'basic';
+        this.resultRevision = 0;
+        this.pendingResultSave = Promise.resolve();
+        this.resultTab = null;
+        this.siteInfo = new SiteInfoPanel();
         this.deepScanRunning = false;
         this.scannedUrls = new Set();
         this.pendingUrls = new Set();
@@ -40,13 +45,18 @@ class ILoveYouTranslucent7 {
 
 
         this.loadResults();
-        this.autoScanIfNeeded();
     }
 
 
     initMessageListeners() {
 
         chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+            if (message.action === 'deepScanComplete') {
+                if (this.resultTab && message.data?.baseUrl === new URL(this.resultTab.url).origin) {
+                    this.loadResults();
+                }
+                return;
+            }
             if (message.action === 'updateScanResults' ||
                 message.action === 'scanProgress' ||
                 message.action === 'scanComplete' ||
@@ -61,75 +71,22 @@ class ILoveYouTranslucent7 {
     }
 
 
-    initDataSync() {
-
-        window.addEventListener('focus', () => {
-
-            this.loadResults().then(() => {
-                if (Object.keys(this.results).length > 0) {
-                    this.displayResults();
-                }
-            });
-        });
-
-
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) {
-
-                this.loadResults().then(() => {
-                    if (Object.keys(this.results).length > 0) {
-                        this.displayResults();
-                    }
-                });
-            }
-        });
-
-
-        setInterval(() => {
-            this.checkDataIntegrity();
-        }, 5000);
+    get results() {
+        return this.resultSource === 'deep' ? this.deepScanResults : this.basicResults;
     }
 
-
-    async checkDataIntegrity() {
-        try {
-
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (!tab || !tab.url) {
-                return;
-            }
-
-            const urlObj = new URL(tab.url);
-            const hostname = urlObj.hostname;
-            const fullUrl = `https://${hostname}`;
-
-
-            if (!window.indexedDBManager) {
-                window.indexedDBManager = new IndexedDBManager();
-            }
-
-
-            const scanDataWrapper = await window.indexedDBManager.loadScanResults(fullUrl);
-            const scanData = scanDataWrapper ? scanDataWrapper.results : null;
-
-
-            const deepScanDataWrapper = await window.indexedDBManager.loadDeepScanResults(fullUrl);
-            const deepScanData = deepScanDataWrapper ? deepScanDataWrapper.results : null;
-
-
-            if ((scanData || deepScanData) && Object.keys(this.results || {}).length === 0) {
-
-                await this.loadResults();
-                if (Object.keys(this.results).length > 0) {
-                    this.displayResults();
-                }
-            }
-        } catch (error) {
-            console.error('数据完整性检查失败:', error);
-        }
+    initDataSync() {
+        window.addEventListener('focus', () => this.loadResults());
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) this.loadResults();
+        });
     }
 
     initEventListeners() {
+        document.getElementById('resultSource').addEventListener('change', event => {
+            this.resultSource = event.target.value;
+            this.displayResults();
+        });
         document.getElementById('scanBtn').addEventListener('click', () => this.startScan());
         document.getElementById('deepScanBtn').addEventListener('click', () => this.toggleDeepScan());
         document.getElementById('clearBtn').addEventListener('click', () => this.clearResults());
@@ -241,12 +198,10 @@ class ILoveYouTranslucent7 {
     handlePageSwitch(pageName) {
         switch (pageName) {
             case 'scan':
-
-                this.loadResults().then(() => {
-                    if (Object.keys(this.results).length > 0) {
-                        this.displayResults();
-                    }
-                });
+                this.loadResults();
+                break;
+            case 'site':
+                this.siteInfo.refresh();
                 break;
             case 'deep':
 
@@ -304,10 +259,6 @@ class ILoveYouTranslucent7 {
         }
 
 
-        if (this.deepScanResults && Object.keys(this.deepScanResults).length > 0) {
-            this.results = this.deepScanResults;
-            this.displayResults();
-        }
     }
 
 
@@ -461,6 +412,7 @@ class ILoveYouTranslucent7 {
     }
 
     displayResults() {
+        document.getElementById('resultSource').value = this.resultSource;
         return this.displayManager.displayResults();
     }
 
@@ -469,7 +421,7 @@ class ILoveYouTranslucent7 {
     }
 
 
-    addCustomApiPaths() {
+    async addCustomApiPaths() {
         const customApiPathsInput = document.getElementById('customApiPaths');
         if (!customApiPathsInput) {
             console.error('找不到自定义API路径输入框');
@@ -490,28 +442,25 @@ class ILoveYouTranslucent7 {
         }
 
 
-        if (!this.results.customApis) {
-            this.results.customApis = [];
-        }
-
-
-        const existingSet = new Set(this.results.customApis);
-        let addedCount = 0;
-
-        paths.forEach(path => {
-            if (!existingSet.has(path)) {
-                this.results.customApis.push(path);
-                existingSet.add(path);
-                addedCount++;
+        if (!this.resultTab) await this.loadResults();
+        if (!this.resultTab) return;
+        const record = this.results;
+        const original = record.customApis || [];
+        const existing = new Set(original.map(item => item?.value ?? item));
+        const additions = [...new Set(paths)].filter(path => !existing.has(path));
+        const addedCount = additions.length;
+        if (addedCount) {
+            const updated = original.concat(additions);
+            record.customApis = updated;
+            try {
+                await this.saveResults();
+            } catch (error) {
+                if (record.customApis === updated) record.customApis = original;
+                this.showNotification('保存自定义路径失败：' + error.message, 'error');
+                return;
             }
-        });
-
-
-        this.saveResults();
-
-
-        this.displayResults();
-
+            this.displayResults();
+        }
 
         const message = `成功添加 ${addedCount} 个自定义API路径到扫描结果中:\n${paths.join('\n')}`;
         alert(message);
@@ -1081,45 +1030,6 @@ class ILoveYouTranslucent7 {
     }
 
 
-    async autoScanIfNeeded() {
-        try {
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-
-            if (!tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://')) {
-
-                return;
-            }
-
-
-            this.updateCurrentDomain(tab.url);
-
-            const urlObj = new URL(tab.url);
-            const fullUrl = `https://${urlObj.hostname}`;
-
-
-            if (!window.indexedDBManager) {
-                window.indexedDBManager = new IndexedDBManager();
-            }
-
-            const scanDataWrapper = await window.indexedDBManager.loadScanResults(fullUrl);
-            const scanData = scanDataWrapper ? scanDataWrapper.results : null;
-
-
-            const now = Date.now();
-            const lastScanTime = scanDataWrapper ? scanDataWrapper.timestamp : 0;
-            const fiveMinutes = 5 * 60 * 1000;
-
-            if (now - lastScanTime > fiveMinutes) {
-                setTimeout(() => {
-                    this.startScan(true);
-                }, 2000);
-            }
-        } catch (error) {
-            console.error('自动扫描检查失败:', error);
-        }
-    }
-
     updateCurrentDomain(url) {
         try {
             const urlObj = new URL(url);
@@ -1155,36 +1065,23 @@ class ILoveYouTranslucent7 {
                 return;
             }
 
-            const pageKey = this.getPageStorageKey(tab.url);
-
-
-            this.results = {};
+            this.resultRevision++;
+            const db = window.IndexedDBManager;
+            const clear = this.pendingResultSave.then(async () => {
+                await db.deleteScanResults(tab.url);
+                await db.deleteDeepScanData(tab.url);
+            });
+            this.pendingResultSave = clear.catch(() => {});
+            await clear;
+            this.resultRevision++;
+            this.basicResults = {};
             this.deepScanResults = {};
+            this.resultSource = 'basic';
             this.scannedUrls = new Set();
             this.pendingUrls = new Set();
             this.currentDepth = 0;
             this.deepScanRunning = false;
-
-
-            document.getElementById('results').innerHTML = '';
-            document.getElementById('stats').textContent = '';
-
-
-            if (!window.indexedDBManager) {
-                window.indexedDBManager = new IndexedDBManager();
-            }
-
-            const urlObj = new URL(tab.url);
-            const hostname = urlObj.hostname;
-            const fullUrl = `https://${hostname}`;
-
-
-            await window.indexedDBManager.deleteScanResults(fullUrl);
-
-
-            await window.indexedDBManager.deleteDeepScanData(fullUrl);
-
-
+            await this.displayResults();
             this.resetDeepScanUI();
 
 
@@ -1199,147 +1096,50 @@ class ILoveYouTranslucent7 {
     }
 
 
-    getPageStorageKey(url) {
-        try {
-            const urlObj = new URL(url);
-
-            const key = urlObj.hostname;
-
-            return key.replace(/[^a-zA-Z0-9._-]/g, '_');
-        } catch (error) {
-            console.error('生成存储键失败:', error);
-
-            return url.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 100);
-        }
-    }
-
-    async saveResults() {
-        try {
-
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (!tab || !tab.url) {
-                console.warn(' 无法获取当前页面URL，跳过保存');
-                return;
-            }
-
-            const urlObj = new URL(tab.url);
-            const hostname = urlObj.hostname;
-
-            const fullUrl = `https://${hostname}`;
-
-
-            if (!window.indexedDBManager) {
-                window.indexedDBManager = new IndexedDBManager();
-            }
-
-
-            if (this.results && Object.keys(this.results).length > 0) {
-                await window.indexedDBManager.saveScanResults(fullUrl, this.results);
-
-            }
-
-
-            if (this.deepScanResults && Object.keys(this.deepScanResults).length > 0) {
-                await window.indexedDBManager.saveDeepScanResults(fullUrl, this.deepScanResults);
-
-
-            }
-
-
-            const deepState = {
-                running: this.deepScanRunning,
-                scannedUrls: Array.from(this.scannedUrls || []),
-                currentDepth: this.currentDepth,
-                maxDepth: this.maxDepth,
-                concurrency: this.concurrency
-            };
-
-            await window.indexedDBManager.saveDeepScanState(fullUrl, deepState);
-
-
-        } catch (error) {
-            console.error(' 数据保存失败:', error);
-        }
+    saveResults(source = this.resultSource, tab = this.resultTab) {
+        this.resultRevision++;
+        const snapshot = structuredClone(source === 'deep' ? this.deepScanResults : this.basicResults);
+        const db = window.IndexedDBManager;
+        const write = () => source === 'deep'
+            ? db.saveDeepScanResults(tab.url, snapshot, tab.url, tab.title)
+            : db.saveScanResults(tab.url, snapshot, tab.url, tab.title);
+        const saved = this.pendingResultSave.then(write);
+        this.pendingResultSave = saved.catch(() => {});
+        return saved;
     }
 
     async loadResults() {
+        const revision = ++this.resultRevision;
         try {
-
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (!tab || !tab.url) {
-                console.warn(' 无法获取当前页面URL，跳过加载');
-                return;
-            }
+            if (!tab?.url || revision !== this.resultRevision) return;
 
-            const urlObj = new URL(tab.url);
-            const hostname = urlObj.hostname;
-            const pageKey = this.getPageStorageKey(tab.url);
+            await this.pendingResultSave;
+            const db = window.IndexedDBManager;
+            const [basic, deep, state] = await Promise.all([
+                db.loadScanResults(tab.url),
+                db.loadDeepScanResults(tab.url),
+                db.loadDeepScanState(tab.url)
+            ]);
+            if (revision !== this.resultRevision) return;
 
-
-
-
-            if (!window.indexedDBManager) {
-                window.indexedDBManager = new IndexedDBManager();
-            }
-
-
-            const fullUrl = `https://${hostname}`;
-            const loadedDataWrapper = await window.indexedDBManager.loadScanResults(fullUrl);
-            const indexedDBResults = loadedDataWrapper ? loadedDataWrapper.results : null;
-
-
-            const deepScanDataWrapper = await window.indexedDBManager.loadDeepScanResults(fullUrl);
-            const deepScanResults = deepScanDataWrapper ? deepScanDataWrapper.results : null;
-
-
-            let bestResults = null;
-            let bestSource = '';
-
-
-            const sources = [
-                { data: deepScanResults, name: 'deepScanResults' },
-                { data: indexedDBResults, name: 'scanResults' }
-            ];
-
-            for (const source of sources) {
-                if (source.data && typeof source.data === 'object') {
-                    const itemCount = Object.values(source.data).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
-                    if (itemCount > 0 && (!bestResults || itemCount > Object.values(bestResults).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0))) {
-                        bestResults = source.data;
-                        bestSource = source.name;
-                    }
-                }
-            }
-
-            if (bestResults) {
-                this.results = bestResults;
-                this.deepScanResults = bestResults;
-
-                this.displayResults();
-            } else {
-
-            }
-
-
-            const deepState = await window.indexedDBManager.loadDeepScanState(fullUrl);
-            if (deepState) {
-                this.deepScanRunning = deepState.running || false;
-                this.scannedUrls = new Set(deepState.scannedUrls || []);
-                this.currentDepth = deepState.currentDepth || 0;
-                this.maxDepth = deepState.maxDepth || 2;
-                this.concurrency = deepState.concurrency || 3;
-
-
-
-
-
-
-            }
+            this.resultTab = tab;
+            this.updateCurrentDomain(tab.url);
+            const { basic: basicData, deep: deepData } = db.unpackHistory(basic?.results, deep?.results);
+            this.basicResults = basicData || {};
+            this.deepScanResults = deepData || {};
+            if (!basicData && deepData) this.resultSource = 'deep';
+            if (!deepData) this.resultSource = 'basic';
+            this.deepScanRunning = state?.running || false;
+            this.scannedUrls = new Set(state?.scannedUrls || []);
+            this.currentDepth = state?.currentDepth || 0;
+            this.maxDepth = state?.maxDepth || 2;
+            this.concurrency = state?.concurrency || 3;
+            await this.displayResults();
         } catch (error) {
-            console.error(' 加载结果失败:', error);
+            console.error('加载结果失败:', error);
         }
     }
-
 
     initJSInjectPage() {
         if (this.jsInjector) {
@@ -1353,7 +1153,7 @@ class ILoveYouTranslucent7 {
     }
 }
 
-const CURRENT_VERSION = 'v1.8.1';
+const CURRENT_VERSION = chrome.runtime.getManifest().version;
 
 function compareVersion(v1, v2) {
     const arr1 = v1.replace(/^v/, '').split('.').map(Number);
@@ -1368,48 +1168,38 @@ function compareVersion(v1, v2) {
 }
 
 function showUpdateModal(release) {
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-        position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;
-        background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;
-    `;
-    modal.innerHTML = `
-        <div style="background:#222;padding:30px 24px;border-radius:12px;max-width:350px;color:#fff;text-align:center;box-shadow:0 0 20px #000;">
-            <h2 style="color:#00d4aa;">Xuan8a1提醒您，有新版本：${release.tag_name}</h2>
-            <div style="margin:12px 0 18px 0;font-size:13px;">${release.name || ''}</div>
-            <div style="margin-bottom:12px;font-size:12px;color:#ccc;">${release.body || ''}</div>
-            <a href="${release.html_url}" target="_blank" style="display:inline-block;padding:8px 18px;background:#00d4aa;color:#222;border-radius:6px;text-decoration:none;font-weight:bold;">前往下载</a>
-            <br><button style="margin-top:18px;padding:6px 18px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;" id="closeUpdateModal">关闭</button>
-        </div>
-    `;
-    document.body.appendChild(modal);
-    modal.querySelector('#closeUpdateModal').onclick = () => modal.remove();
+    const dialog = document.getElementById('updateDialog');
+    dialog.querySelector('[data-version]').textContent = release.tag_name;
+    dialog.querySelector('[data-title]').textContent = typeof release.name === 'string' ? release.name.slice(0, 200) : '';
+    dialog.querySelector('[data-notes]').textContent = typeof release.body === 'string' ? release.body.slice(0, 4000) : '';
+    if (!dialog.open) dialog.showModal();
 }
 
 async function checkForUpdate() {
     try {
-        const lastShown = localStorage.getItem('phantom_update_last_shown');
-        const now = Date.now();
-        if (lastShown && now - Number(lastShown) < 24 * 60 * 60 * 1000) return;
+        const lastShown = Number(localStorage.getItem('phantom_update_last_shown'));
+        if (Date.now() - lastShown < 24 * 60 * 60 * 1000) return;
 
-        const res = await fetch('https://www.cn-fnst.top/huanying/');
+        const res = await fetch('https://www.cn-fnst.top/huanying/', {
+            credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer',
+            signal: AbortSignal.timeout(10000)
+        });
         if (!res.ok) return;
         const releases = await res.json();
-        if (!Array.isArray(releases) || releases.length === 0) return;
-
-        let maxRelease = releases[0];
-        for (const r of releases) {
-            if (compareVersion(maxRelease.tag_name, r.tag_name) < 0) {
-                maxRelease = r;
-            }
+        if (!Array.isArray(releases)) return;
+        let latest;
+        for (const release of releases) {
+            if (typeof release?.tag_name !== 'string' || !/^v?\d{1,5}(?:\.\d{1,5}){1,3}$/.test(release.tag_name)) continue;
+            if (compareVersion(release.tag_name, latest?.tag_name || CURRENT_VERSION) > 0) latest = release;
         }
-        if (compareVersion(CURRENT_VERSION, maxRelease.tag_name) < 0) {
-            showUpdateModal(maxRelease);
-            localStorage.setItem('phantom_update_last_shown', now);
+        if (latest) {
+            showUpdateModal(latest);
+            localStorage.setItem('phantom_update_last_shown', Date.now());
         }
-    } catch (e) {}
+    } catch {
+        // The popup can also be used offline.
+    }
 }
-
 
 async function initASTSystem() {
     console.log(' [AST] 开始初始化 AST 系统...');

@@ -182,14 +182,12 @@ class SRCMinerContent {
 
             if (!silent) {
                 this.logResults(results);
+            } else {
+                // Background page observations use the latest-result cache. The popup saves explicit scans.
+                chrome.runtime.sendMessage({
+                    action: 'storeResults', data: results, url: window.location.href
+                }).catch(() => {});
             }
-
-
-            chrome.runtime.sendMessage({
-                action: 'storeResults',
-                data: results,
-                url: window.location.href
-            }).catch(() => {});
 
             return results;
         } catch (error) {

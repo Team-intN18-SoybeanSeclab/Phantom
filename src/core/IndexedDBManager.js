@@ -3,6 +3,7 @@ class IndexedDBManager {
         this.dbName = 'PhantomScanDB';
         this.dbVersion = 2;
         this.db = null;
+        this.opening = null;
         this.storeName = 'scanResults';
     }
 
@@ -12,7 +13,8 @@ class IndexedDBManager {
             return this.db;
         }
 
-        return new Promise((resolve, reject) => {
+        if (this.opening) return this.opening;
+        this.opening = new Promise((resolve, reject) => {
             const request = indexedDB.open(this.dbName, this.dbVersion);
 
             request.onerror = () => {
@@ -22,6 +24,7 @@ class IndexedDBManager {
 
             request.onsuccess = () => {
                 this.db = request.result;
+                this.db.onversionchange = () => this.close();
 
                 resolve(this.db);
             };
@@ -58,7 +61,8 @@ class IndexedDBManager {
                     console.log(' JS脚本对象存储和索引创建成功');
                 }
             };
-        });
+        }).finally(() => { this.opening = null; });
+        return this.opening;
     }
 
 
@@ -75,54 +79,72 @@ class IndexedDBManager {
     }
 
 
-    async saveScanResults(url, results, sourceUrl = null, pageTitle = null) {
-        try {
-            await this.init();
-
-            const transaction = this.db.transaction([this.storeName], 'readwrite');
-            const store = transaction.objectStore(this.storeName);
-
-            const urlObj = new URL(url);
-            const storageKey = this.generateStorageKey(url);
-
-
-            const actualSourceUrl = sourceUrl || url;
-            const actualPageTitle = pageTitle || document.title || urlObj.hostname;
-            const currentTime = new Date().toISOString();
-
-
-            const transformedResults = this.dedupeResults(results, actualSourceUrl, currentTime, actualPageTitle);
-
-            const data = {
-                id: storageKey,
-                domain: urlObj.hostname,
-                url: url,
-                results: transformedResults,
-                sourceUrl: actualSourceUrl,
-                pageTitle: actualPageTitle,
-                extractedAt: currentTime,
-                timestamp: Date.now(),
-                lastSave: Date.now()
-            };
-
-            const request = store.put(data);
-
-            return new Promise((resolve, reject) => {
-                request.onsuccess = () => {
-
-                    resolve(true);
-                };
-
-                request.onerror = () => {
-                    console.error(' 保存扫描结果失败:', request.error);
-                    reject(request.error);
-                };
-            });
-
-        } catch (error) {
-            console.error(' IndexedDB保存操作失败:', error);
-            throw error;
+    unpackHistory(basic, deep) {
+        // Older deep windows stored their snapshot around the previous basic record.
+        while (basic?.scanMetadata?.lastScanType === 'deep') {
+            const { results: previous, timestamp, lastSave, ...snapshot } = basic;
+            deep ??= snapshot;
+            basic = previous;
         }
+        return { basic, deep };
+    }
+
+    saveScanResults(url, results, sourceUrl = null, pageTitle = null) {
+        return this.saveResultRecord('basic', url, results, sourceUrl, pageTitle);
+    }
+
+    saveDeepScanResults(url, results, sourceUrl = null, pageTitle = null, mergeExisting = false) {
+        return this.saveResultRecord('deep', url, results, sourceUrl, pageTitle, mergeExisting);
+    }
+
+    async saveResultRecord(kind, url, results, sourceUrl, pageTitle, mergeExisting = false) {
+        await this.init();
+        const domain = new URL(url).hostname;
+        const baseId = this.generateStorageKey(url);
+        const deepId = baseId + '__deep';
+        const id = kind === 'deep' ? deepId : baseId;
+        const source = sourceUrl || url;
+        const title = pageTitle || document.title || domain;
+        const now = Date.now();
+        const extractedAt = new Date(now).toISOString();
+        // A second observation of the same values and provenance retains the first discovery time.
+        const compareField = (key, value) => key === 'extractedAt' ? undefined : value;
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(this.storeName, 'readwrite');
+            transaction.oncomplete = () => resolve(true);
+            transaction.onabort = () => reject(transaction.error || new Error('保存扫描记录失败'));
+            const store = transaction.objectStore(this.storeName);
+            const basicRead = store.get(baseId);
+            const deepRead = store.get(deepId);
+            // IndexedDB completes requests on this transaction in the order they were queued.
+            deepRead.onsuccess = () => {
+                const basicRecord = basicRead.result;
+                const deepRecord = deepRead.result;
+                const history = this.unpackHistory(basicRecord?.results, deepRecord?.results);
+                const previous = kind === 'deep' ? deepRecord : basicRecord;
+                const old = mergeExisting ? history.deep : null;
+                const combined = { ...old, ...results };
+                if (old) {
+                    for (const [key, items] of Object.entries(results)) {
+                        if (Array.isArray(old[key]) && Array.isArray(items)) combined[key] = old[key].concat(items);
+                    }
+                }
+                const normalized = this.dedupeResults(combined, source, extractedAt, title);
+                if (previous?.sourceUrl === source && previous.pageTitle === title &&
+                    JSON.stringify(history[kind], compareField) === JSON.stringify(normalized, compareField)) return;
+
+                if (kind === 'basic' && !deepRecord && history.deep) {
+                    // Move the embedded deep history before replacing its only copy, in the same transaction.
+                    store.put({ ...basicRecord, id: deepId, type: 'deepScan', results: history.deep });
+                }
+
+                const record = { id, domain, url, results: normalized, sourceUrl: source, pageTitle: title,
+                    extractedAt, timestamp: now, lastSave: now };
+                if (kind === 'deep') record.type = 'deepScan';
+                store.put(record);
+            };
+        });
     }
 
 
@@ -316,58 +338,6 @@ class IndexedDBManager {
                 oldestRecord: null,
                 newestRecord: null
             };
-        }
-    }
-
-
-    async saveDeepScanResults(url, results, sourceUrl = null, pageTitle = null) {
-        try {
-            await this.init();
-
-            const transaction = this.db.transaction([this.storeName], 'readwrite');
-            const store = transaction.objectStore(this.storeName);
-
-            const urlObj = new URL(url);
-            const storageKey = this.generateStorageKey(url) + '__deep';
-
-
-            const actualSourceUrl = sourceUrl || window.location.href || url;
-            const actualPageTitle = pageTitle || document.title || urlObj.hostname;
-            const currentTime = new Date().toISOString();
-
-
-            const dedupedResults = this.dedupeResults(results, actualSourceUrl, currentTime, actualPageTitle);
-
-            const data = {
-                id: storageKey,
-                domain: urlObj.hostname,
-                url: url,
-                results: dedupedResults,
-                sourceUrl: actualSourceUrl,
-                pageTitle: actualPageTitle,
-                extractedAt: currentTime,
-                type: 'deepScan',
-                timestamp: Date.now(),
-                lastSave: Date.now()
-            };
-
-            const request = store.put(data);
-
-            return new Promise((resolve, reject) => {
-                request.onsuccess = () => {
-
-                    resolve(true);
-                };
-
-                request.onerror = () => {
-
-                    reject(request.error);
-                };
-            });
-
-        } catch (error) {
-            console.error(' IndexedDB保存深度扫描结果失败:', error);
-            throw error;
         }
     }
 

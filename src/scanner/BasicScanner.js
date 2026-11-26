@@ -97,8 +97,10 @@ class BasicScanner {
             }
 
             if (results) {
-                this.srcMiner.results = results;
-                this.srcMiner.saveResults();
+                this.srcMiner.basicResults = results;
+                this.srcMiner.resultSource = 'basic';
+                this.srcMiner.resultTab = tab;
+                await this.srcMiner.saveResults('basic', tab);
                 this.srcMiner.displayResults();
                 if (!silent) {
                     this.showScanComplete();

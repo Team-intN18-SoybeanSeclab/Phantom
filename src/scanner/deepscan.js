@@ -1,6 +1,7 @@
 let scanConfig         = null;
 let scanResults        = {};
 let isScanRunning      = false;
+let completionPromise   = null;
 let isPaused           = false;
 let currentDepth       = 0;
 let scannedUrls        = new Set();
@@ -2467,9 +2468,9 @@ function processWebpackResult(webpackResult) {
 
 async function startScan() {
     if (isScanRunning) return;
-
-
     isScanRunning = true;
+    await completionPromise;
+    completionPromise = null;
     isPaused = false;
     currentDepth = 0;
     scannedUrls.clear();
@@ -2513,7 +2514,7 @@ async function startScan() {
         await performLayeredScan(initialUrls);
 
 
-        completeScan();
+        await completeScan();
 
     } catch (error) {
         console.error(' 扫描失败:', error);
@@ -3054,90 +3055,28 @@ function mergeResults(newResults) {
 
 
 async function saveResultsToStorage() {
-    try {
-
-        let domainKey = 'unknown__results';
-        if (scanConfig?.baseUrl) {
-            try {
-                const hostname = new URL(scanConfig.baseUrl).hostname;
-                domainKey = `${hostname}__results`;
-            } catch (e) {
-                console.warn('解析域名失败，使用默认键:', e);
-            }
+    const {baseUrl, sourceUrl, pageTitle} = scanConfig;
+    const data = {
+        ...scanResults,
+        scanMetadata: {
+            lastScanType: 'deep', deepScanComplete: true,
+            deepScanTimestamp: Date.now(), deepScanUrl: baseUrl, totalScanned: scannedUrls.size
         }
-
-
-
-
-        const existingResults = await window.IndexedDBManager.loadScanResults(scanConfig.baseUrl) || {};
-
-
-        const mergedResults = { ...existingResults };
-
-
-        Object.keys(scanResults).forEach(key => {
-            if (!mergedResults[key]) {
-                mergedResults[key] = [];
-            }
-
-
-            const existingKeys = new Set();
-            mergedResults[key].forEach(item => {
-                const itemKey = typeof item === 'object' ? item.value : item;
-                existingKeys.add(itemKey);
-            });
-
-
-            scanResults[key].forEach(item => {
-                if (item) {
-                    const itemKey = typeof item === 'object' ? item.value : item;
-
-                    if (key === 'relativeApis' && String(itemKey ?? '').trim() === '/') {
-
-                        return;
-                    }
-                    if (!existingKeys.has(itemKey)) {
-                        mergedResults[key].push(item);
-                        existingKeys.add(itemKey);
-                    }
-                }
-            });
-        });
-
-
-        mergedResults.scanMetadata = {
-            ...existingResults.scanMetadata,
-            lastScanType: 'deep',
-            deepScanComplete: true,
-            deepScanTimestamp: Date.now(),
-            deepScanUrl: scanConfig.baseUrl,
-            totalScanned: scannedUrls.size
-        };
-
-
-        const pageTitle = scanConfig.pageTitle || document.title || 'Deep Scan Results';
-
-        await window.IndexedDBManager.saveScanResults(scanConfig.baseUrl, mergedResults, scanConfig.baseUrl, pageTitle);
-
-
-
-        console.log(' 合并后结果统计:', {
-            总数: Object.values(mergedResults).reduce((sum, arr) => {
-                return sum + (Array.isArray(arr) ? arr.length : 0);
-            }, 0),
-            深度扫描贡献: Object.values(scanResults).reduce((sum, arr) => sum + (arr?.length || 0), 0)
-        });
-
-    } catch (error) {
-        console.error(' 保存结果失败:', error);
-    }
+    };
+    await window.IndexedDBManager.saveDeepScanResults(baseUrl, data, sourceUrl || baseUrl, pageTitle, true);
 }
 
+function completeScan() {
+    if (!completionPromise) {
+        completionPromise = finishScan().catch(error => {
+            completionPromise = null;
+            addLogEntry('保存深度结果失败：' + error.message, 'error');
+        });
+    }
+    return completionPromise;
+}
 
-async function completeScan() {
-
-
-
+async function finishScan() {
     flushPendingResults();
 
     const totalResults = Object.values(scanResults).reduce((sum, arr) => sum + (arr?.length || 0), 0);
